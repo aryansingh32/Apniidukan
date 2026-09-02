@@ -7,7 +7,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: apniidukan
     ports:
-      - "5432:5432"
+      # Host-side 5433 (not 5432) so this doesn't collide with any Postgres
+      # you already have running locally. Containers still talk to each
+      # other over the internal "postgres:5432" hostname regardless of this
+      # mapping — only change this if you need `psql` from the host itself.
+      - "5433:5432"
     volumes:
       - apniidukan_pgdata:/var/lib/postgresql/data
     healthcheck:
