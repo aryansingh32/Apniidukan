@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RetailerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum AdminRole {
+  ADMIN
+  OPERATIONS
+  FINANCE
+  SUPER_ADMIN
+}
+
+enum ProductStatus {
+  ACTIVE
+  OUT_OF_STOCK
+  INACTIVE
+}
+
+enum SchemeType {
+  ORDER_VALUE_DISCOUNT
+  BUY_X_GET_Y_FREE
+}
+
+enum OrderStatus {
+  PAYMENT_PENDING
+  PAYMENT_VERIFICATION
+  CONFIRMED
+  PICKING
+  PACKED
+  DISPATCHED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  UTR_SUBMITTED
+  UNDER_REVIEW
+  PAYMENT_APPROVED
+  PAYMENT_REJECTED
+}
+
+model Retailer {
+  id              String         @id @default(uuid())
+  mobileNumber    String         @unique
+  ownerName       String?
+  shopName        String?
+  address         String?
+  city            String?
+  pincode         String?
+  gstin           String?
+  shopPhotoUrl    String?
+  status          RetailerStatus @default(PENDING)
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  cart   Cart?
+  orders Order[]
+}
+
+model OtpRequest {
+  id           String   @id @default(uuid())
+  mobileNumber String
+  code         String
+  expiresAt    DateTime
+  consumed     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([mobileNumber])
+}
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now())
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  imageUrl  String?
+  sortOrder Int       @default(0)
+  products  Product[]
+}
+
+model Product {
+  id                 String        @id @default(uuid())
+  name               String
+  brand              String
+  categoryId         String
+  category           Category      @relation(fields: [categoryId], references: [id])
+  imageUrl           String?
+  packSize           String
+  unitsPerCase       Int
+  mrpPerUnit         Decimal       @db.Decimal(10, 2)
+  buyingPricePerCase Decimal       @db.Decimal(10, 2)
+  gstRate            Decimal       @default(18) @db.Decimal(5, 2)
+  hsnCode            String?
+  sku                String        @unique
+  barcode            String?
+  status             ProductStatus @default(ACTIVE)
+  stockCases         Int           @default(0)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  bulkPriceSlabs BulkPriceSlab[]
+  schemes        Scheme[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+
+  @@index([categoryId])
+}
+
+model BulkPriceSlab {
+  id           String  @id @default(uuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minCases     Int
+  maxCases     Int?
+  pricePerCase Decimal @db.Decimal(10, 2)
+
+  @@index([productId])
+}
+
+model Scheme {
+  id                  String     @id @default(uuid())
+  title               String
+  description         String
+  type                SchemeType
+  minOrderValue       Decimal?   @db.Decimal(10, 2)
+  discountPercent     Decimal?   @db.Decimal(5, 2)
+  flatDiscount        Decimal?   @db.Decimal(10, 2)
+  productId           String?
+  product             Product?   @relation(fields: [productId], references: [id])
+  buyQty              Int?
+  freeQty             Int?
+  startDate           DateTime
+  endDate             DateTime
+  active              Boolean    @default(true)
+  imageUrl            String?
+  maxUsagePerRetailer Int?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+}
+
+model Banner {
+  id        String    @id @default(uuid())
+  title     String
+  subtitle  String?
+  imageUrl  String
+  ctaLabel  String?
+  ctaTarget String?
+  priority  Int       @default(0)
+  startDate DateTime?
+  endDate   DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+}
+
+model DeliverySlot {
+  id          String  @id @default(uuid())
+  label       String
+  windowStart String
+  windowEnd   String
+  cutoffTime  String
+  active      Boolean @default(true)
+  orders      Order[]
+}
+
+model Cart {
+  id         String     @id @default(uuid())
+  retailerId String     @unique
+  retailer   Retailer   @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  items      CartItem[]
+  updatedAt  DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  caseQty   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+}
+
+model Order {
+  id             String               @id @default(uuid())
+  orderNumber    String               @unique
+  retailerId     String
+  retailer       Retailer             @relation(fields: [retailerId], references: [id])
+  items          OrderItem[]
+  subtotal       Decimal              @db.Decimal(10, 2)
+  tradeDiscount  Decimal              @default(0) @db.Decimal(10, 2)
+  schemeDiscount Decimal              @default(0) @db.Decimal(10, 2)
+  gstAmount      Decimal              @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal              @db.Decimal(10, 2)
+  appliedSchemes Json?
+  deliverySlotId String?
+  deliverySlot   DeliverySlot?        @relation(fields: [deliverySlotId], references: [id])
+  deliveryDate   DateTime?
+  status         OrderStatus          @default(PAYMENT_PENDING)
+  statusHistory  OrderStatusHistory[]
+  payment        Payment?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model OrderItem {
+  id                  String  @id @default(uuid())
+  orderId             String
+  order               Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product @relation(fields: [productId], references: [id])
+  productNameSnapshot String
+  brandSnapshot       String
+  packSizeSnapshot    String
+  caseQty             Int
+  freeCaseQty         Int     @default(0)
+  pricePerCase        Decimal @db.Decimal(10, 2)
+  mrpPerUnit          Decimal @db.Decimal(10, 2)
+  unitsPerCase        Int
+  gstRate             Decimal @db.Decimal(5, 2)
+  lineSubtotal        Decimal @db.Decimal(10, 2)
+  lineDiscount        Decimal @default(0) @db.Decimal(10, 2)
+  lineTotal           Decimal @db.Decimal(10, 2)
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String        @unique
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount            Decimal       @db.Decimal(10, 2)
+  upiId             String
+  utr               String?
+  screenshotUrl     String?
+  status            PaymentStatus @default(UNPAID)
+  rejectionReason   String?
+  verifiedByAdminId String?
+  verifiedAt        DateTime?
+  submittedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorType  String
+  actorId    String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
