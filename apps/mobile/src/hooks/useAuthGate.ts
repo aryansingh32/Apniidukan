@@ -21,7 +21,10 @@ const AUTH_SCREEN_FOR_STATUS: Partial<Record<AuthStatus, string>> = {
  */
 export function useAuthGate() {
   const { authStatus } = useAuth();
-  const segments = useSegments();
+  // Cast away expo-router's statically-inferred segment tuple type — this
+  // hook deliberately compares against arbitrary route groups/screens at
+  // runtime, which the generated tuple type is too narrow to type-check.
+  const segments = useSegments() as string[];
   const router = useRouter();
   const navState = useRootNavigationState();
 

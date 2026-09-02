@@ -62,7 +62,7 @@ export default function ScannerScreen() {
       {showCamera ? (
         <View style={styles.cameraWrap}>
           <CameraView
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
             onBarcodeScanned={lookingUp ? undefined : handleBarcodeScanned}

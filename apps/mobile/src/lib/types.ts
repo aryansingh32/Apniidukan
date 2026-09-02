@@ -99,14 +99,38 @@ export interface Product {
 
 export type SchemeType = 'ORDER_VALUE_DISCOUNT' | 'BUY_X_GET_Y_FREE';
 
+// The product nested on a BUY_X_GET_Y_FREE scheme is a raw Prisma row, not
+// the computed product-card shape from /products — no categoryName,
+// margin/profit fields, slabs, etc. Only render fields that exist here.
+export interface SchemeProduct {
+  id: string;
+  name: string;
+  brand: string;
+  categoryId: string;
+  imageUrl: string | null;
+  packSize: string;
+  unitsPerCase: number;
+  mrpPerUnit: number | string;
+  buyingPricePerCase: number | string;
+  gstRate: number | string;
+  hsnCode: string | null;
+  sku: string;
+  barcode: string | null;
+  status: ProductStatus;
+  stockCases: number;
+}
+
 export interface Scheme {
   id: string;
   title: string;
   description: string | null;
   type: SchemeType;
-  minOrderValue: number | null;
-  discountPercent: number | null;
-  flatDiscount: number | null;
+  // Decimal fields on this endpoint are serialized as numeric strings by
+  // the backend rather than numbers — formatCurrency() coerces, but keep
+  // the type honest for anything that reads these directly.
+  minOrderValue: number | string | null;
+  discountPercent: number | string | null;
+  flatDiscount: number | string | null;
   productId: string | null;
   buyQty: number | null;
   freeQty: number | null;
@@ -115,7 +139,7 @@ export interface Scheme {
   active: boolean;
   imageUrl: string | null;
   maxUsagePerRetailer: number | null;
-  product?: Product | null;
+  product?: SchemeProduct | null;
 }
 
 export interface DeliverySlot {
@@ -218,6 +242,12 @@ export type PaymentStatus =
   | 'PAYMENT_APPROVED'
   | 'PAYMENT_REJECTED';
 
+// Note: the order-related endpoints (POST /orders, GET /orders, GET
+// /orders/:id, GET /orders/:orderId/payment) serialize Prisma Decimal
+// fields as numeric strings, unlike /cart and /products which send real
+// numbers — the fields below are typed `number | string` to match actual
+// backend behavior; always render them through formatCurrency(), which
+// coerces either shape correctly.
 export interface OrderItem {
   id: string;
   productId: string;
@@ -226,18 +256,18 @@ export interface OrderItem {
   packSizeSnapshot: string;
   caseQty: number;
   freeCaseQty: number;
-  pricePerCase: number;
-  mrpPerUnit: number;
+  pricePerCase: number | string;
+  mrpPerUnit: number | string;
   unitsPerCase: number;
-  gstRate: number;
-  lineSubtotal: number;
-  lineDiscount: number;
-  lineTotal: number;
+  gstRate: number | string;
+  lineSubtotal: number | string;
+  lineDiscount: number | string;
+  lineTotal: number | string;
 }
 
 export interface Payment {
   id: string;
-  amount: number;
+  amount: number | string;
   upiId: string | null;
   utr: string | null;
   screenshotUrl: string | null;
@@ -261,11 +291,11 @@ export interface AppliedSchemesSummary {
 export interface Order {
   id: string;
   orderNumber: string;
-  subtotal: number;
-  tradeDiscount: number;
-  schemeDiscount: number;
-  gstAmount: number;
-  totalAmount: number;
+  subtotal: number | string;
+  tradeDiscount: number | string;
+  schemeDiscount: number | string;
+  gstAmount: number | string;
+  totalAmount: number | string;
   appliedSchemes: AppliedSchemesSummary | null;
   deliverySlotId: string;
   deliveryDate: string;

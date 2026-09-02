@@ -1,12 +1,13 @@
 import React from 'react';
+import type { ColorValue } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/theme';
 
 function tabIcon(name: keyof typeof Ionicons.glyphMap, focusedName: keyof typeof Ionicons.glyphMap) {
-  return ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
-    <Ionicons name={focused ? focusedName : name} size={size} color={color} />
+  return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
+    <Ionicons name={focused ? focusedName : name} size={size} color={color as string} />
   );
 }
 

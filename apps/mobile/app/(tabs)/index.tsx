@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.lg,
     backgroundColor: colors.primary,
   },
-  bannerImage: { ...StyleSheet.absoluteFillObject, opacity: 0.55 },
+  bannerImage: { ...StyleSheet.absoluteFill, opacity: 0.55 },
   bannerTextWrap: { flex: 1, padding: spacing.lg, justifyContent: 'flex-end' },
   bannerTitle: { color: colors.white, fontSize: fontSize.lg, fontWeight: '800' },
   bannerSubtitle: { color: colors.white, fontSize: fontSize.sm, marginTop: 2, opacity: 0.9 },

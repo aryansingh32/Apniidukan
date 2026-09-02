@@ -18,6 +18,7 @@ function NavigationRoot() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="product/[id]" />
       <Stack.Screen name="category/[id]" />
+      <Stack.Screen name="order/[id]" />
       <Stack.Screen name="search" />
       <Stack.Screen name="scanner" options={{ presentation: 'modal' }} />
       <Stack.Screen name="cart" />
