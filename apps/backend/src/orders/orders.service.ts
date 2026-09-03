@@ -2,8 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
-import { OrderStatus, NotificationType } from '@prisma/client';
+import { OrderStatus, NotificationType, LedgerEntryType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { FefoAllocationService } from '../expiry/fefo-allocation.service';
+import { InventoryLedgerService } from '../expiry/inventory-ledger.service';
+import { ExpiryPolicyService } from '../expiry/expiry-policy.service';
+import { ProductBatchesService } from '../expiry/product-batches.service';
 
 const STATUS_NOTIFICATIONS: Partial<Record<OrderStatus, { type: NotificationType; title: string; body: (orderNumber: string) => string }>> = {
   [OrderStatus.DISPATCHED]: {
@@ -49,6 +53,10 @@ export class OrdersService {
     private pricing: PricingService,
     private config: ConfigService,
     private notifications: NotificationsService,
+    private fefo: FefoAllocationService,
+    private ledger: InventoryLedgerService,
+    private expiryPolicy: ExpiryPolicyService,
+    private productBatches: ProductBatchesService,
   ) {}
 
   private async generateOrderNumber(): Promise<string> {
@@ -83,6 +91,7 @@ export class OrdersService {
 
     const orderNumber = await this.generateOrderNumber();
     const upiId = this.config.get<string>('UPI_ID') ?? 'apniidukan@upi';
+    const policy = await this.expiryPolicy.get();
 
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
@@ -130,11 +139,39 @@ export class OrdersService {
         include: { items: true, payment: true, deliverySlot: true },
       });
 
+      const itemByProductId = new Map(created.items.map((item) => [item.productId, item]));
+      const touchedProductIds = new Set<string>();
+
       for (const line of computation.lines) {
-        await tx.product.update({
-          where: { id: line.productId },
-          data: { stockCases: { decrement: line.caseQty + line.freeCaseQty } },
-        });
+        const totalQty = line.caseQty + line.freeCaseQty;
+        const plan = await this.fefo.allocateForLine(tx, line.productId, totalQty, policy.minimumRemainingShelfLifeDays, line.productName);
+
+        if (plan) {
+          const orderItem = itemByProductId.get(line.productId)!;
+          for (const allocation of plan) {
+            await tx.orderItemBatchAllocation.create({
+              data: {
+                orderItemId: orderItem.id,
+                batchId: allocation.batchId,
+                caseQty: allocation.caseQty,
+                batchNumberSnapshot: allocation.batchNumberSnapshot,
+                expiryDateSnapshot: allocation.expiryDateSnapshot,
+              },
+            });
+          }
+          touchedProductIds.add(line.productId);
+        } else {
+          // No batches exist for this product at all — legacy path, same
+          // behavior as before batch tracking existed.
+          await tx.product.update({
+            where: { id: line.productId },
+            data: { stockCases: { decrement: totalQty } },
+          });
+        }
+      }
+
+      for (const productId of touchedProductIds) {
+        await this.productBatches.syncProductStockCases(productId, tx);
       }
 
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
@@ -218,7 +255,10 @@ export class OrdersService {
   }
 
   async adminUpdateStatus(id: string, status: OrderStatus, note?: string, otp?: string) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: { items: { include: { batchAllocations: true } } },
+    });
     if (!order) throw new NotFoundException('Order not found');
 
     const data: Record<string, unknown> = { status, statusHistory: { create: { status, note } } };
@@ -230,10 +270,33 @@ export class OrdersService {
       data.deliveryOtpVerifiedAt = new Date();
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
-      data,
-      include: { items: true, payment: true, statusHistory: { orderBy: { createdAt: 'asc' } } },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.order.update({
+        where: { id },
+        data,
+        include: { items: true, payment: true, statusHistory: { orderBy: { createdAt: 'asc' } } },
+      });
+
+      // This is the "delivery confirmation" event from EXPIRY_SYSTEM_DESIGN.md —
+      // riding the same OTP gate that already proves timestamp + receiver +
+      // explicit confirmation, rather than a separate delivery-confirmation step.
+      if (status === OrderStatus.DELIVERED) {
+        for (const item of order.items) {
+          for (const allocation of item.batchAllocations) {
+            await this.ledger.recordMovement(tx, {
+              retailerId: order.retailerId,
+              batchId: allocation.batchId,
+              productId: item.productId,
+              type: LedgerEntryType.RECEIVED,
+              quantity: allocation.caseQty,
+              orderId: order.id,
+              reason: 'Delivered — OTP verified',
+            });
+          }
+        }
+      }
+
+      return result;
     });
 
     const notif = STATUS_NOTIFICATIONS[status];

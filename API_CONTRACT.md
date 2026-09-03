@@ -255,6 +255,61 @@ ORDER_DISPATCHED | OUT_FOR_DELIVERY | ORDER_DELIVERED | ORDER_CANCELLED | NEW_SC
 ACCOUNT_APPROVED | ACCOUNT_REJECTED | ACCOUNT_SUSPENDED | BROADCAST` (`ORDER_CONFIRMED`
 is reserved/currently unused — `PAYMENT_VERIFIED` covers that transition instead).
 
+## Expiry traceability & claim system (retailer, APPROVED only)
+
+Full design rationale in `EXPIRY_SYSTEM_DESIGN.md` at the repo root — read that
+first for the *why*, this is just the *what*. Short version: a retailer can only
+claim units the backend can prove were delivered to them and haven't already
+been accounted for (sold back, returned, previously claimed, written off).
+
+- `GET /expiry/my-stock` → the retailer's currently-held batches (remainingQty > 0
+  only), each annotated with claim eligibility:
+  ```json
+  [{
+    "batchId": "uuid", "productId": "uuid", "productName": "...", "brand": "...",
+    "imageUrl": "...", "batchNumber": "GD-EXP", "expiryDate": "2026-08-24T...",
+    "remainingQty": 3, "pendingRequestedQty": 0, "claimable": 3,
+    "eligible": true, "ineligibleReason": null
+  }]
+  ```
+  `claimable` already subtracts this retailer's other pending (`SUBMITTED`,
+  undecided) claims against the same batch — it's the exact number safe to
+  request right now. `eligible`/`ineligibleReason` explain *why* a batch with
+  stock left isn't claimable yet (outside the claim window per policy, or
+  nothing left after pending claims) — render this, don't just hide the row.
+- `POST /expiry/claims` `{ reason, evidenceUrl?, items: [{ batchId, requestedQty }] }`
+  → submits a claim. **400s the whole request** if any item's `requestedQty`
+  exceeds that batch's current `claimable` — the error names the batch and the
+  actual claimable number, e.g. `"Batch GD-EXP: requested 100 but only 3
+  case(s) are currently claimable."` Never resubmit with a server-computed
+  qty silently substituted; show the user the real number from `my-stock` and
+  let them adjust. Returns the created claim; `status` is already `APPROVED`
+  in the response if the total credit value was under the policy's
+  auto-approve limit, otherwise `SUBMITTED` (awaiting admin review).
+- `GET /expiry/claims` / `GET /expiry/claims/:id` → the retailer's own claims,
+  each with `items[]` (including the nested `batch`).
+
+**Claim shape:**
+```json
+{
+  "id": "uuid", "claimNumber": "CLM-18003", "retailerId": "uuid",
+  "status": "APPROVED", "flagged": false, "reason": "...", "evidenceUrl": null,
+  "totalRequestedQty": 3, "totalApprovedQty": 3,
+  "decisionNote": "Auto-approved: total credit within policy limit",
+  "decidedByAdminId": null, "decidedAt": "...", "createdAt": "...",
+  "items": [{
+    "id": "uuid", "batchId": "uuid", "productId": "uuid", "requestedQty": 3,
+    "claimableQtyAtSubmission": 3, "approvedQty": 3, "unitCreditAmount": 1080,
+    "totalCreditAmount": 3240, "rejectionReasonCode": null, "batch": { "...": "ProductBatch row" }
+  }]
+}
+```
+`ExpiryClaimStatus`: `SUBMITTED | APPROVED | REJECTED | CLOSED` (`CLOSED` is
+reserved for a future "credit note settled" step, not currently set anywhere).
+`ExpiryClaimRejectionReason` (set per-item on reject): `WRONG_BATCH |
+NOT_DELIVERED | QUANTITY_EXCEEDED | CLAIM_WINDOW | EVIDENCE | DUPLICATE |
+POLICY | SUSPICIOUS`.
+
 ## Admin endpoints
 
 All under `Authorization: Bearer <admin token>`.
@@ -295,6 +350,78 @@ All under `Authorization: Bearer <admin token>`.
   (fires a `PAYMENT_REJECTED` notification)
 - Notifications: `POST /admin/notifications/broadcast` `{ title, body }` → sends a
   `BROADCAST`-type notification to every `APPROVED` retailer, returns `{ count }`.
+- Batches: `GET/POST /admin/products/:productId/batches` — stock-in a batch/lot
+  `{ batchNumber, expiryDate, receivedQty, manufacturingDate?, stockInDate?,
+  costPricePerCase?, storageRequirements? }`; `GET /admin/batches/:id`, `PATCH
+  /admin/batches/:id` `{ storageRequirements?, costPricePerCase?, status? }` —
+  admin can correct these fields or set `status: "BLOCKED"` (e.g. a recall —
+  stops the batch being FEFO-allocated at checkout immediately); retailers have
+  no batch-editing endpoint anywhere, by design.
+- Expiry Center: `GET /admin/expiry/center` → `{ counts: { EXPIRED, CRITICAL_7,
+  CRITICAL_30, WARNING_60, WARNING_90, INFO_180, HEALTHY }, totalBatches }` (live,
+  computed from each batch's `expiryDate` on every call — not the cached
+  `expiryBucket` field, which only updates on the notification sweep). `GET
+  /admin/expiry/batches?bucket=` (bucket optional) → flat list for that bucket.
+  `GET /admin/expiry/batches/:id` → batch + `distributedTotals` (received/
+  claimed/returned/transferred/writtenOff/damaged summed across all retailers,
+  and `remainingWithRetailers` — deliberately no "sold" figure, this platform
+  doesn't track retailers' own point-of-sale) + `holdings[]` (which retailers
+  currently hold this batch and how much).
+- Policy: `GET /admin/expiry/policy` / `PATCH /admin/expiry/policy` `{
+  claimAllowed?, minimumExpiryAtDeliveryDays?, claimWindowAfterExpiryDays?,
+  claimWindowBeforeExpiryDays?, minimumRemainingShelfLifeDays?, requiresPhoto?,
+  autoApproveLimitAmount? }` — one row, applies platform-wide.
+  `minimumRemainingShelfLifeDays` also gates checkout itself (see below), not
+  just claims.
+- Claims: `GET /admin/expiry/claims?status=`, `GET /admin/expiry/claims/:id`,
+  `POST /admin/expiry/claims/:id/approve` `{ note? }` (credits the retailer's
+  ledger with an `EXPIRED_CLAIM` movement and fires an
+  `EXPIRY_CLAIM_APPROVED` notification), `POST
+  /admin/expiry/claims/:id/reject` `{ rejectionReasonCode, note? }` (fires
+  `EXPIRY_CLAIM_REJECTED`). 400 if the claim isn't `SUBMITTED` (already decided).
+- `POST /admin/expiry/run-checks` → manually runs the expiry notification
+  sweep (also runs automatically daily at 6am) — walks every batch, and for
+  any batch whose bucket got more urgent since the last run, notifies every
+  retailer currently holding stock of it (`BATCH_EXPIRING` / `BATCH_EXPIRED`).
+  Returns `{ batchesUpdated, notificationsSent, checkedAt }`. Use this to
+  demo the notification engine without waiting for the cron.
+
+**Checkout is now batch-aware.** `POST /orders` FEFO-allocates each line
+across a product's batches (earliest `expiryDate` first) when that product
+has any batches at all — skipping batches with fewer than
+`minimumRemainingShelfLifeDays` of shelf life remaining, and 400ing
+(`"Only N case(s) of X have enough remaining shelf life to ship right
+now..."`) if the eligible batches can't cover the requested quantity. A
+product with zero batches ever created is unaffected — same behavior as
+before this feature existed, and such orders simply can never back an expiry
+claim (no batch, nothing to trace). `Order` and `GET /orders/:id` responses
+are unchanged in shape; the allocation detail
+(`OrderItemBatchAllocation` — which batch(es) fulfilled each line) isn't
+currently surfaced on the order response, only on `/admin/expiry/batches/:id`'s
+retailer holdings and the retailer's own `/expiry/my-stock`.
+
+**Delivery already credits the ledger.** The existing delivery-OTP flow
+(`PATCH /admin/orders/:id/status {status: "DELIVERED", otp}`) now also, in
+the same transaction, credits the retailer's `RetailerBatchStock` for every
+batch that order's items were allocated from — this is what makes the batch
+show up in that retailer's `GET /expiry/my-stock` afterward. No new endpoint,
+no behavior change to the request/response shape.
+
+**ProductBatch shape:**
+```json
+{
+  "id": "uuid", "productId": "uuid", "batchNumber": "PG-H1",
+  "manufacturingDate": "...", "expiryDate": "2027-04-11T...",
+  "stockInDate": "...", "warehouseRemainingQty": 125, "receivedQty": 150,
+  "costPricePerCase": 780, "storageRequirements": null,
+  "status": "ACTIVE", "expiryBucket": "HEALTHY"
+}
+```
+`BatchStatus`: `ACTIVE | NEAR_EXPIRY | EXPIRED | BLOCKED` (system-maintained
+from `expiryDate` by the notification sweep, except `BLOCKED` which is a
+manual admin override the sweep never clears — set/unset it explicitly via
+`PATCH /admin/batches/:id`). `ExpiryBucket`: `HEALTHY | INFO_180 | WARNING_90
+| WARNING_60 | CRITICAL_30 | CRITICAL_7 | EXPIRED`.
 
 ## Field/enum reference
 
@@ -309,11 +436,20 @@ All under `Authorization: Bearer <admin token>`.
   currently unused, treat it the same as `UNDER_REVIEW` if you ever see it)
 - `SchemeType`: `ORDER_VALUE_DISCOUNT | BUY_X_GET_Y_FREE`
 - `NotificationType`: see the Notifications section above
+- `BatchStatus`: `ACTIVE | NEAR_EXPIRY | EXPIRED | BLOCKED`
+- `ExpiryBucket`: `HEALTHY | INFO_180 | WARNING_90 | WARNING_60 | CRITICAL_30 |
+  CRITICAL_7 | EXPIRED`
+- `LedgerEntryType`: `RECEIVED | SALE | RETURN | TRANSFER | ADJUSTMENT |
+  EXPIRED_CLAIM | DAMAGED | WRITE_OFF` (`SALE` and `ADJUSTMENT` aren't
+  produced by any endpoint yet — see EXPIRY_SYSTEM_DESIGN.md's Phase 2 notes)
+- `ExpiryClaimStatus`: `SUBMITTED | APPROVED | REJECTED | CLOSED`
+- `ExpiryClaimRejectionReason`: `WRONG_BATCH | NOT_DELIVERED | QUANTITY_EXCEEDED
+  | CLAIM_WINDOW | EVIDENCE | DUPLICATE | POLICY | SUSPICIOUS`
 
 ## What's intentionally out of scope in this vertical slice
 
-No returns/credit-notes endpoints, no GST invoice PDF endpoint, no inventory-batch/FEFO
-tracking, no offline-sync/idempotency-key endpoints, no barcode-scanner-specific
+No returns/credit-notes endpoints, no GST invoice PDF endpoint, no
+offline-sync/idempotency-key endpoints, no barcode-scanner-specific
 endpoint beyond `GET /products/barcode/:code`, no file upload endpoint (image/screenshot
 fields are plain URL strings), no OS-level push notifications (in-app notification
 center only — see Notifications above), no separate driver app (delivery OTP entry

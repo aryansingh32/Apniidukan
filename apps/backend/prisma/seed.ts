@@ -10,14 +10,19 @@ const BANNER_IMG = (seed: string) => `https://picsum.photos/seed/banner-${seed}/
 async function main() {
   console.log('Clearing existing data...');
   await prisma.auditLog.deleteMany();
+  await prisma.expiryClaim.deleteMany();
+  await prisma.inventoryLedgerEntry.deleteMany();
+  await prisma.retailerBatchStock.deleteMany();
   await prisma.orderStatusHistory.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.orderItemBatchAllocation.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.cartItem.deleteMany();
   await prisma.cart.deleteMany();
   await prisma.scheme.deleteMany();
   await prisma.bulkPriceSlab.deleteMany();
+  await prisma.productBatch.deleteMany();
   await prisma.product.deleteMany();
   await prisma.category.deleteMany();
   await prisma.banner.deleteMany();
@@ -25,6 +30,7 @@ async function main() {
   await prisma.otpRequest.deleteMany();
   await prisma.retailer.deleteMany();
   await prisma.adminUser.deleteMany();
+  await prisma.expiryClaimPolicy.deleteMany();
 
   console.log('Creating admin users...');
   const passwordHash = await bcrypt.hash('Admin@123', 10);
@@ -197,6 +203,66 @@ async function main() {
         });
       }
     }
+  }
+
+  console.log('Creating expiry batches...');
+  function daysFromNow(n: number) {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+  function bucketFor(expiryDate: Date): 'HEALTHY' | 'INFO_180' | 'WARNING_90' | 'WARNING_60' | 'CRITICAL_30' | 'CRITICAL_7' | 'EXPIRED' {
+    const days = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
+    if (days < 0) return 'EXPIRED';
+    if (days <= 7) return 'CRITICAL_7';
+    if (days <= 30) return 'CRITICAL_30';
+    if (days <= 60) return 'WARNING_60';
+    if (days <= 90) return 'WARNING_90';
+    if (days <= 180) return 'INFO_180';
+    return 'HEALTHY';
+  }
+  function statusFor(bucket: ReturnType<typeof bucketFor>): 'ACTIVE' | 'NEAR_EXPIRY' | 'EXPIRED' {
+    if (bucket === 'EXPIRED') return 'EXPIRED';
+    if (bucket === 'CRITICAL_30' || bucket === 'CRITICAL_7') return 'NEAR_EXPIRY';
+    return 'ACTIVE';
+  }
+
+  async function createBatch(sku: string, batchNumber: string, expiryDate: Date, receivedQty: number, costPricePerCase: number, mfgOffsetDays = -300) {
+    const bucket = bucketFor(expiryDate);
+    const status = statusFor(bucket);
+    return prisma.productBatch.create({
+      data: {
+        productId: productIdBySku[sku],
+        batchNumber,
+        manufacturingDate: daysFromNow(mfgOffsetDays),
+        expiryDate,
+        stockInDate: daysFromNow(-30),
+        receivedQty,
+        warehouseRemainingQty: receivedQty,
+        costPricePerCase,
+        status,
+        expiryBucket: bucket,
+      },
+    });
+  }
+
+  const batchParleG = await createBatch('BIS-PARLEG-100', 'PG-H1', daysFromNow(220), 150, 780);
+  const batchLux = await createBatch('SO-LUX-100', 'LX-C30', daysFromNow(22), 60, 2040);
+  const batchSurfExcel = await createBatch('DT-SURFEXCEL-1000', 'SE-C7', daysFromNow(5), 3, 1310);
+  const batchGoodDay = await createBatch('BIS-GOODDAY-150', 'GD-EXP', daysFromNow(-10), 20, 1080);
+  const batchTataSalt = await createBatch('GR-TATASALT-1000', 'TS-H1', daysFromNow(300), 200, 504);
+  await createBatch('BEV-NESCAFE-50', 'NC-W60', daysFromNow(50), 30, 7776);
+
+  // Keep each batch-tracked product's stockCases aggregate in sync with what
+  // OrdersService.syncProductStockCases would compute (sum of sellable-status
+  // batches) — see EXPIRY_SYSTEM_DESIGN.md.
+  for (const sku of ['BIS-PARLEG-100', 'SO-LUX-100', 'DT-SURFEXCEL-1000', 'BIS-GOODDAY-150', 'GR-TATASALT-1000', 'BEV-NESCAFE-50']) {
+    const productId = productIdBySku[sku];
+    const agg = await prisma.productBatch.aggregate({
+      where: { productId, status: { in: ['ACTIVE', 'NEAR_EXPIRY'] } },
+      _sum: { warehouseRemainingQty: true },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stockCases: agg._sum.warehouseRemainingQty ?? 0 } });
   }
 
   console.log('Creating schemes...');
@@ -740,6 +806,149 @@ async function main() {
       },
     ],
   });
+
+  console.log('Creating retailer batch stock (simulated historical deliveries)...');
+
+  async function receiveBatch(retailerId: string, batch: { id: string; productId: string }, qty: number, daysAgo: number) {
+    const deliveredAt = new Date(Date.now() - daysAgo * dayMs);
+    await prisma.productBatch.update({ where: { id: batch.id }, data: { warehouseRemainingQty: { decrement: qty } } });
+    await prisma.inventoryLedgerEntry.create({
+      data: {
+        retailerId,
+        batchId: batch.id,
+        productId: batch.productId,
+        type: 'RECEIVED',
+        quantity: qty,
+        reason: 'Delivered — OTP verified',
+        businessDate: deliveredAt,
+        createdAt: deliveredAt,
+      },
+    });
+    return prisma.retailerBatchStock.create({
+      data: {
+        retailerId,
+        batchId: batch.id,
+        productId: batch.productId,
+        receivedQty: qty,
+        remainingQty: qty,
+        firstDeliveredAt: deliveredAt,
+        lastMovementAt: deliveredAt,
+      },
+    });
+  }
+
+  await receiveBatch(retailer1.id, batchParleG, 20, 25);
+  await receiveBatch(retailer1.id, batchLux, 10, 8);
+  await receiveBatch(retailer3.id, batchSurfExcel, 2, 3);
+
+  // A healthy, far-dated batch — shows up in My Stock too, just not urgent.
+  await receiveBatch(retailer2.id, batchTataSalt, 12, 40);
+
+  // Second expired batch, dedicated to demoing the claims workflow below.
+  const batchDairyMilkExpired = await prisma.productBatch.create({
+    data: {
+      productId: productIdByName['Cadbury Dairy Milk Chocolate'],
+      batchNumber: 'DM-EXP',
+      manufacturingDate: daysFromNow(-200),
+      expiryDate: daysFromNow(-3),
+      stockInDate: daysFromNow(-45),
+      receivedQty: 20,
+      warehouseRemainingQty: 20,
+      costPricePerCase: 1920,
+      status: 'EXPIRED',
+      expiryBucket: 'EXPIRED',
+    },
+  });
+
+  console.log('Creating sample expiry claims...');
+
+  // Claim #1 — already approved by admin, credited back to the retailer.
+  const goodDayStock = await receiveBatch(retailer2.id, batchGoodDay, 8, 15);
+  const approvedClaim = await prisma.expiryClaim.create({
+    data: {
+      claimNumber: 'CLM-18001',
+      retailerId: retailer2.id,
+      status: 'APPROVED',
+      reason: 'Found during counter stock audit — past printed expiry date.',
+      totalRequestedQty: 5,
+      totalApprovedQty: 5,
+      decisionNote: 'Verified against delivery record. Approved.',
+      decidedByAdminId: superAdmin.id,
+      decidedAt: new Date(Date.now() - 2 * dayMs),
+      createdAt: new Date(Date.now() - 3 * dayMs),
+      items: {
+        create: [
+          {
+            batchId: batchGoodDay.id,
+            productId: batchGoodDay.productId,
+            requestedQty: 5,
+            claimableQtyAtSubmission: 8,
+            approvedQty: 5,
+            unitCreditAmount: 1080,
+            totalCreditAmount: 5400,
+          },
+        ],
+      },
+    },
+  });
+  await prisma.inventoryLedgerEntry.create({
+    data: {
+      retailerId: retailer2.id,
+      batchId: batchGoodDay.id,
+      productId: batchGoodDay.productId,
+      type: 'EXPIRED_CLAIM',
+      quantity: -5,
+      claimId: approvedClaim.id,
+      performedByAdminId: superAdmin.id,
+      reason: 'Expiry claim approved',
+      createdAt: new Date(Date.now() - 2 * dayMs),
+    },
+  });
+  await prisma.retailerBatchStock.update({
+    where: { id: goodDayStock.id },
+    data: { claimedQty: 5, remainingQty: 3, lastMovementAt: new Date(Date.now() - 2 * dayMs) },
+  });
+
+  // Claim #2 — pending, sitting in the admin review queue.
+  await receiveBatch(retailer1.id, batchDairyMilkExpired, 5, 6);
+  await prisma.expiryClaim.create({
+    data: {
+      claimNumber: 'CLM-18002',
+      retailerId: retailer1.id,
+      status: 'SUBMITTED',
+      reason: 'Entire batch expired before it could be sold.',
+      totalRequestedQty: 5,
+      createdAt: new Date(Date.now() - 1 * dayMs),
+      items: {
+        create: [
+          {
+            batchId: batchDairyMilkExpired.id,
+            productId: batchDairyMilkExpired.productId,
+            requestedQty: 5,
+            claimableQtyAtSubmission: 5,
+            unitCreditAmount: 1920,
+            totalCreditAmount: 9600,
+          },
+        ],
+      },
+    },
+  });
+
+  // Re-sync stockCases now that receiveBatch() calls above decremented
+  // warehouseRemainingQty directly (bypassing ProductBatchesService, which
+  // the real app always keeps in sync automatically within its own
+  // transactions — see EXPIRY_SYSTEM_DESIGN.md).
+  for (const sku of ['BIS-PARLEG-100', 'SO-LUX-100', 'DT-SURFEXCEL-1000', 'BIS-GOODDAY-150', 'GR-TATASALT-1000', 'BEV-NESCAFE-50']) {
+    const productId = productIdBySku[sku];
+    const agg = await prisma.productBatch.aggregate({
+      where: { productId, status: { in: ['ACTIVE', 'NEAR_EXPIRY'] } },
+      _sum: { warehouseRemainingQty: true },
+    });
+    await prisma.product.update({ where: { id: productId }, data: { stockCases: agg._sum.warehouseRemainingQty ?? 0 } });
+  }
+  // Cadbury Dairy Milk's only batch (DM-EXP) is EXPIRED — not sellable, so
+  // it's deliberately excluded from the sync loop above and keeps whatever
+  // stockCases the product array set originally.
 
   console.log('Seed complete.');
   console.log('---');

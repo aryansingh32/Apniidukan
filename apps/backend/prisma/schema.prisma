@@ -70,6 +70,9 @@ model Retailer {
   cart          Cart?
   orders        Order[]
   notifications Notification[]
+  ledgerEntries InventoryLedgerEntry[]
+  batchStocks   RetailerBatchStock[]
+  expiryClaims  ExpiryClaim[]
 }
 
 model OtpRequest {
@@ -124,6 +127,7 @@ model Product {
   schemes        Scheme[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
+  batches        ProductBatch[]
 
   @@index([categoryId])
 }
@@ -248,6 +252,8 @@ model OrderItem {
   lineSubtotal        Decimal @db.Decimal(10, 2)
   lineDiscount        Decimal @default(0) @db.Decimal(10, 2)
   lineTotal           Decimal @db.Decimal(10, 2)
+
+  batchAllocations OrderItemBatchAllocation[]
 }
 
 model OrderStatusHistory {
@@ -300,6 +306,10 @@ enum NotificationType {
   ACCOUNT_REJECTED
   ACCOUNT_SUSPENDED
   BROADCAST
+  BATCH_EXPIRING
+  BATCH_EXPIRED
+  EXPIRY_CLAIM_APPROVED
+  EXPIRY_CLAIM_REJECTED
 }
 
 model Notification {
@@ -314,4 +324,185 @@ model Notification {
   createdAt  DateTime         @default(now())
 
   @@index([retailerId, read])
+}
+
+// ============================================================
+// Expiry traceability & claim-control system
+// See EXPIRY_SYSTEM_DESIGN.md at the repo root for the full design
+// rationale — this is the schema half of that document.
+// ============================================================
+
+enum BatchStatus {
+  ACTIVE
+  NEAR_EXPIRY
+  EXPIRED
+  BLOCKED
+}
+
+enum ExpiryBucket {
+  HEALTHY
+  INFO_180
+  WARNING_90
+  WARNING_60
+  CRITICAL_30
+  CRITICAL_7
+  EXPIRED
+}
+
+enum LedgerEntryType {
+  RECEIVED
+  SALE
+  RETURN
+  TRANSFER
+  ADJUSTMENT
+  EXPIRED_CLAIM
+  DAMAGED
+  WRITE_OFF
+}
+
+enum ExpiryClaimStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+enum ExpiryClaimRejectionReason {
+  WRONG_BATCH
+  NOT_DELIVERED
+  QUANTITY_EXCEEDED
+  CLAIM_WINDOW
+  EVIDENCE
+  DUPLICATE
+  POLICY
+  SUSPICIOUS
+}
+
+model ProductBatch {
+  id                    String       @id @default(uuid())
+  productId             String
+  product               Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batchNumber           String
+  manufacturingDate     DateTime?
+  expiryDate            DateTime
+  stockInDate           DateTime     @default(now())
+  warehouseRemainingQty Int
+  receivedQty           Int
+  costPricePerCase      Decimal?     @db.Decimal(10, 2)
+  storageRequirements   String?
+  status                BatchStatus  @default(ACTIVE)
+  expiryBucket          ExpiryBucket @default(HEALTHY)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  allocations   OrderItemBatchAllocation[]
+  ledgerEntries InventoryLedgerEntry[]
+  retailerStock RetailerBatchStock[]
+  claimItems    ExpiryClaimItem[]
+
+  @@unique([productId, batchNumber])
+  @@index([expiryDate])
+}
+
+model OrderItemBatchAllocation {
+  id                  String       @id @default(uuid())
+  orderItemId         String
+  orderItem           OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  batchId             String
+  batch               ProductBatch @relation(fields: [batchId], references: [id])
+  caseQty             Int
+  batchNumberSnapshot String
+  expiryDateSnapshot  DateTime
+  createdAt           DateTime     @default(now())
+
+  @@index([orderItemId])
+  @@index([batchId])
+}
+
+model InventoryLedgerEntry {
+  id                 String          @id @default(uuid())
+  retailerId         String
+  retailer           Retailer        @relation(fields: [retailerId], references: [id])
+  batchId            String
+  batch              ProductBatch    @relation(fields: [batchId], references: [id])
+  productId          String
+  type               LedgerEntryType
+  quantity           Int
+  orderId            String?
+  claimId            String?
+  reason             String?
+  performedByAdminId String?
+  businessDate       DateTime        @default(now())
+  createdAt          DateTime        @default(now())
+
+  @@index([retailerId, batchId])
+  @@index([batchId])
+}
+
+model RetailerBatchStock {
+  id               String       @id @default(uuid())
+  retailerId       String
+  retailer         Retailer     @relation(fields: [retailerId], references: [id])
+  batchId          String
+  batch            ProductBatch @relation(fields: [batchId], references: [id])
+  productId        String
+  receivedQty      Int          @default(0)
+  claimedQty       Int          @default(0)
+  returnedQty      Int          @default(0)
+  transferredQty   Int          @default(0)
+  writtenOffQty    Int          @default(0)
+  damagedQty       Int          @default(0)
+  remainingQty     Int          @default(0)
+  firstDeliveredAt DateTime?
+  lastMovementAt   DateTime     @default(now())
+
+  @@unique([retailerId, batchId])
+  @@index([productId])
+}
+
+model ExpiryClaimPolicy {
+  id                            String   @id @default(uuid())
+  claimAllowed                  Boolean  @default(true)
+  minimumExpiryAtDeliveryDays   Int      @default(90)
+  claimWindowAfterExpiryDays    Int      @default(30)
+  claimWindowBeforeExpiryDays   Int      @default(0)
+  minimumRemainingShelfLifeDays Int      @default(60)
+  requiresPhoto                 Boolean  @default(false)
+  autoApproveLimitAmount        Decimal  @default(5000) @db.Decimal(10, 2)
+  updatedAt                     DateTime @updatedAt
+}
+
+model ExpiryClaim {
+  id                String            @id @default(uuid())
+  claimNumber       String            @unique
+  retailerId        String
+  retailer          Retailer          @relation(fields: [retailerId], references: [id])
+  status            ExpiryClaimStatus @default(SUBMITTED)
+  flagged           Boolean           @default(false)
+  reason            String
+  evidenceUrl       String?
+  totalRequestedQty Int
+  totalApprovedQty  Int?
+  decisionNote      String?
+  decidedByAdminId  String?
+  decidedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  items ExpiryClaimItem[]
+}
+
+model ExpiryClaimItem {
+  id                       String                      @id @default(uuid())
+  claimId                  String
+  claim                    ExpiryClaim                 @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  batchId                  String
+  batch                    ProductBatch                @relation(fields: [batchId], references: [id])
+  productId                String
+  requestedQty             Int
+  claimableQtyAtSubmission Int
+  approvedQty              Int?
+  unitCreditAmount         Decimal?                    @db.Decimal(10, 2)
+  totalCreditAmount        Decimal?                    @db.Decimal(10, 2)
+  rejectionReasonCode      ExpiryClaimRejectionReason?
 }
