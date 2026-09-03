@@ -51,6 +51,10 @@ export default function AccountScreen() {
         <Card noPadding>
           <SettingsRow icon="receipt-outline" label="My Orders" onPress={() => router.push('/(tabs)/orders')} />
           <Divider />
+          <SettingsRow icon="cube-outline" label="My Stock" subtitle="Batch-wise stock and expiry claim eligibility" onPress={() => router.push('/my-stock')} />
+          <Divider />
+          <SettingsRow icon="document-text-outline" label="Expiry Claims" subtitle="Track claims you've submitted" onPress={() => router.push('/expiry-claims')} />
+          <Divider />
           <SettingsRow icon="book-outline" label="Hisaab / Ledger" subtitle="Track your running balance" disabled />
           <Divider />
           <SettingsRow icon="document-outline" label="Invoices" subtitle="GST invoice downloads" disabled />

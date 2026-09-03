@@ -24,6 +24,20 @@ const styles: Record<string, string> = {
   UNDER_REVIEW: "bg-amber-50 text-amber-700 ring-amber-600/20",
   PAYMENT_APPROVED: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
   PAYMENT_REJECTED: "bg-red-50 text-red-700 ring-red-600/20",
+  // batch status
+  NEAR_EXPIRY: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  EXPIRED: "bg-red-50 text-red-700 ring-red-600/20",
+  BLOCKED: "bg-red-100 text-red-800 ring-red-600/30",
+  // expiry bucket
+  HEALTHY: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  INFO_180: "bg-sky-50 text-sky-700 ring-sky-600/20",
+  WARNING_90: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  WARNING_60: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  CRITICAL_30: "bg-orange-50 text-orange-700 ring-orange-600/20",
+  CRITICAL_7: "bg-red-50 text-red-700 ring-red-600/20",
+  // expiry claim status
+  SUBMITTED: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  CLOSED: "bg-slate-100 text-slate-600 ring-slate-500/20",
 };
 
 export default function Badge({ value }: { value: string }) {

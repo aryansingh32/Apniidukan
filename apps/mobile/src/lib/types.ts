@@ -329,7 +329,70 @@ export type NotificationType =
   | 'ACCOUNT_APPROVED'
   | 'ACCOUNT_REJECTED'
   | 'ACCOUNT_SUSPENDED'
-  | 'BROADCAST';
+  | 'BROADCAST'
+  | 'BATCH_EXPIRING'
+  | 'BATCH_EXPIRED'
+  | 'EXPIRY_CLAIM_APPROVED'
+  | 'EXPIRY_CLAIM_REJECTED';
+
+// ---- Expiry traceability & claim system ----
+// See EXPIRY_SYSTEM_DESIGN.md at the repo root for the design rationale.
+// A retailer can only claim units the backend can prove they were
+// delivered and haven't already been accounted for — the frontend never
+// computes or overrides "claimable", it only renders what the server sends.
+
+export interface MyStockBatch {
+  batchId: string;
+  productId: string;
+  productName: string;
+  brand: string;
+  imageUrl: string | null;
+  batchNumber: string;
+  expiryDate: string;
+  remainingQty: number;
+  pendingRequestedQty: number;
+  claimable: number;
+  eligible: boolean;
+  ineligibleReason: string | null;
+}
+
+export type ExpiryClaimStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CLOSED';
+export type ExpiryClaimRejectionReason =
+  | 'WRONG_BATCH'
+  | 'NOT_DELIVERED'
+  | 'QUANTITY_EXCEEDED'
+  | 'CLAIM_WINDOW'
+  | 'EVIDENCE'
+  | 'DUPLICATE'
+  | 'POLICY'
+  | 'SUSPICIOUS';
+
+export interface ExpiryClaimItem {
+  id: string;
+  batchId: string;
+  productId: string;
+  requestedQty: number;
+  claimableQtyAtSubmission: number;
+  approvedQty: number | null;
+  unitCreditAmount: number | null;
+  totalCreditAmount: number | null;
+  rejectionReasonCode: ExpiryClaimRejectionReason | null;
+  batch?: { batchNumber: string; expiryDate: string; productId: string };
+}
+
+export interface ExpiryClaim {
+  id: string;
+  claimNumber: string;
+  status: ExpiryClaimStatus;
+  reason: string;
+  evidenceUrl: string | null;
+  totalRequestedQty: number;
+  totalApprovedQty: number | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  items: ExpiryClaimItem[];
+}
 
 export interface AppNotification {
   id: string;

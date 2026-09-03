@@ -195,3 +195,128 @@ export interface DashboardStats {
   lowStockProducts: Product[];
   totalRetailers: number;
 }
+
+// ---- Expiry traceability & claim system ----
+// See EXPIRY_SYSTEM_DESIGN.md at the repo root for the design rationale.
+
+export type BatchStatus = "ACTIVE" | "NEAR_EXPIRY" | "EXPIRED" | "BLOCKED";
+export type ExpiryBucket =
+  | "HEALTHY"
+  | "INFO_180"
+  | "WARNING_90"
+  | "WARNING_60"
+  | "CRITICAL_30"
+  | "CRITICAL_7"
+  | "EXPIRED";
+export type ExpiryClaimStatus = "SUBMITTED" | "APPROVED" | "REJECTED" | "CLOSED";
+export type ExpiryClaimRejectionReason =
+  | "WRONG_BATCH"
+  | "NOT_DELIVERED"
+  | "QUANTITY_EXCEEDED"
+  | "CLAIM_WINDOW"
+  | "EVIDENCE"
+  | "DUPLICATE"
+  | "POLICY"
+  | "SUSPICIOUS";
+
+export interface ProductBatch {
+  id: string;
+  productId: string;
+  batchNumber: string;
+  manufacturingDate: string | null;
+  expiryDate: string;
+  stockInDate: string;
+  warehouseRemainingQty: number;
+  receivedQty: number;
+  costPricePerCase: number | null;
+  storageRequirements: string | null;
+  status: BatchStatus;
+  expiryBucket: ExpiryBucket;
+}
+
+export interface ExpiryCenterSummary {
+  counts: Record<ExpiryBucket, number>;
+  totalBatches: number;
+}
+
+export interface ExpiryBucketBatchRow {
+  id: string;
+  productId: string;
+  productName: string;
+  brand: string;
+  imageUrl: string | null;
+  batchNumber: string;
+  expiryDate: string;
+  bucket: ExpiryBucket;
+  status: BatchStatus;
+  warehouseRemainingQty: number;
+}
+
+export interface RetailerHolding {
+  retailerId: string;
+  shopName: string | null;
+  ownerName: string | null;
+  city: string | null;
+  remainingQty: number;
+  receivedQty: number;
+  claimedQty: number;
+}
+
+export interface BatchDetail {
+  batch: ProductBatch & { product: Product };
+  liveBucket: ExpiryBucket;
+  distributedTotals: {
+    receivedByRetailers: number;
+    claimed: number;
+    returned: number;
+    transferred: number;
+    writtenOff: number;
+    damaged: number;
+    remainingWithRetailers: number;
+  };
+  retailersHolding: number;
+  holdings: RetailerHolding[];
+}
+
+export interface ExpiryClaimPolicy {
+  id: string;
+  claimAllowed: boolean;
+  minimumExpiryAtDeliveryDays: number;
+  claimWindowAfterExpiryDays: number;
+  claimWindowBeforeExpiryDays: number;
+  minimumRemainingShelfLifeDays: number;
+  requiresPhoto: boolean;
+  autoApproveLimitAmount: number;
+}
+
+export interface ExpiryClaimItem {
+  id: string;
+  claimId: string;
+  batchId: string;
+  productId: string;
+  requestedQty: number;
+  claimableQtyAtSubmission: number;
+  approvedQty: number | null;
+  unitCreditAmount: number | null;
+  totalCreditAmount: number | null;
+  rejectionReasonCode: ExpiryClaimRejectionReason | null;
+  batch?: ProductBatch;
+}
+
+export interface ExpiryClaim {
+  id: string;
+  claimNumber: string;
+  retailerId: string;
+  status: ExpiryClaimStatus;
+  flagged: boolean;
+  reason: string;
+  evidenceUrl: string | null;
+  totalRequestedQty: number;
+  totalApprovedQty: number | null;
+  decisionNote: string | null;
+  decidedByAdminId: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  items: ExpiryClaimItem[];
+  retailer?: Retailer;
+}

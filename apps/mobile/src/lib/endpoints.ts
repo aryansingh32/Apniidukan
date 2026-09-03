@@ -5,6 +5,8 @@ import type {
   Cart,
   Category,
   DeliverySlot,
+  ExpiryClaim,
+  MyStockBatch,
   Order,
   PaymentInfo,
   Product,
@@ -124,3 +126,16 @@ export const markNotificationRead = (id: string) =>
 
 export const markAllNotificationsRead = () =>
   apiFetch<{ success: boolean }>('/notifications/read-all', { method: 'POST' });
+
+// ---- Expiry traceability & claims ----
+export const getMyStock = () => apiFetch<MyStockBatch[]>('/expiry/my-stock');
+
+export const getExpiryClaims = () => apiFetch<ExpiryClaim[]>('/expiry/claims');
+
+export const getExpiryClaim = (id: string) => apiFetch<ExpiryClaim>(`/expiry/claims/${id}`);
+
+export const submitExpiryClaim = (batchId: string, requestedQty: number, reason: string, evidenceUrl?: string) =>
+  apiFetch<ExpiryClaim>('/expiry/claims', {
+    method: 'POST',
+    body: { items: [{ batchId, requestedQty }], reason, evidenceUrl },
+  });

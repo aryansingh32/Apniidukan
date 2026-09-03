@@ -25,6 +25,10 @@ const ICONS: Record<NotificationType, keyof typeof Ionicons.glyphMap> = {
   ACCOUNT_REJECTED: 'alert-circle-outline',
   ACCOUNT_SUSPENDED: 'lock-closed-outline',
   BROADCAST: 'megaphone-outline',
+  BATCH_EXPIRING: 'hourglass-outline',
+  BATCH_EXPIRED: 'alert-circle-outline',
+  EXPIRY_CLAIM_APPROVED: 'checkmark-circle-outline',
+  EXPIRY_CLAIM_REJECTED: 'close-circle-outline',
 };
 
 const TONES: Partial<Record<NotificationType, string>> = {
@@ -35,6 +39,10 @@ const TONES: Partial<Record<NotificationType, string>> = {
   PAYMENT_VERIFIED: colors.success,
   ORDER_DELIVERED: colors.success,
   ACCOUNT_APPROVED: colors.success,
+  BATCH_EXPIRED: colors.danger,
+  BATCH_EXPIRING: colors.warning,
+  EXPIRY_CLAIM_APPROVED: colors.success,
+  EXPIRY_CLAIM_REJECTED: colors.danger,
 };
 
 export default function NotificationsScreen() {
@@ -48,6 +56,10 @@ export default function NotificationsScreen() {
     }
     if (n.orderId) {
       router.push(`/order/${n.orderId}`);
+    } else if (n.type === 'BATCH_EXPIRING' || n.type === 'BATCH_EXPIRED') {
+      router.push('/my-stock');
+    } else if (n.type === 'EXPIRY_CLAIM_APPROVED' || n.type === 'EXPIRY_CLAIM_REJECTED') {
+      router.push('/expiry-claims');
     }
   }
 

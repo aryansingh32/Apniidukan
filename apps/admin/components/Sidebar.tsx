@@ -9,6 +9,7 @@ const NAV = [
   { href: "/orders", label: "Orders", icon: "box" },
   { href: "/retailers", label: "Retailers", icon: "users" },
   { href: "/products", label: "Products", icon: "tag" },
+  { href: "/expiry", label: "Expiry Center", icon: "hourglass" },
   { href: "/categories", label: "Categories", icon: "folder" },
   { href: "/schemes", label: "Schemes", icon: "gift" },
   { href: "/banners", label: "Banners", icon: "image" },
@@ -26,6 +27,7 @@ function Icon({ name, className }: { name: string; className?: string }) {
     gift: "M20 12v9H4v-9M2 7h20v5H2V7zm10 14V7m0 0a2.5 2.5 0 10-2.5-2.5A2.5 2.5 0 0012 7zm0 0a2.5 2.5 0 102.5-2.5A2.5 2.5 0 0012 7z",
     image: "M4 4h16v16H4V4zm4 8l3 3 5-6 4 8H4l4-5z",
     clock: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+    hourglass: "M6 2h12M6 22h12M6 2v6a6 6 0 006 6 6 6 0 006-6V2M6 22v-6a6 6 0 016-6 6 6 0 016 6v6",
   };
   return (
     <svg

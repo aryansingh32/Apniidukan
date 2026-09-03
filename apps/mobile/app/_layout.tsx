@@ -25,6 +25,9 @@ function NavigationRoot() {
       <Stack.Screen name="checkout" />
       <Stack.Screen name="payment/[orderId]" />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="my-stock" />
+      <Stack.Screen name="expiry-claim/[batchId]" />
+      <Stack.Screen name="expiry-claims" />
     </Stack>
   );
 }
