@@ -2,7 +2,31 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, NotificationType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+
+const STATUS_NOTIFICATIONS: Partial<Record<OrderStatus, { type: NotificationType; title: string; body: (orderNumber: string) => string }>> = {
+  [OrderStatus.DISPATCHED]: {
+    type: NotificationType.ORDER_DISPATCHED,
+    title: 'Order Dispatched',
+    body: (n) => `Your order ${n} has been dispatched and is on its way.`,
+  },
+  [OrderStatus.OUT_FOR_DELIVERY]: {
+    type: NotificationType.OUT_FOR_DELIVERY,
+    title: 'Out for Delivery',
+    body: (n) => `Your order ${n} is out for delivery today.`,
+  },
+  [OrderStatus.DELIVERED]: {
+    type: NotificationType.ORDER_DELIVERED,
+    title: 'Order Delivered',
+    body: (n) => `Your order ${n} has been delivered. Thank you for ordering with us!`,
+  },
+  [OrderStatus.CANCELLED]: {
+    type: NotificationType.ORDER_CANCELLED,
+    title: 'Order Cancelled',
+    body: (n) => `Your order ${n} has been cancelled.`,
+  },
+};
 
 const CART_ITEM_PRODUCT_INCLUDE = {
   product: { include: { bulkPriceSlabs: true, schemes: { where: { active: true, type: 'BUY_X_GET_Y_FREE' as const } } } },
@@ -20,7 +44,12 @@ const ACTIVE_STATUSES: OrderStatus[] = [
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService, private pricing: PricingService, private config: ConfigService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pricing: PricingService,
+    private config: ConfigService,
+    private notifications: NotificationsService,
+  ) {}
 
   private async generateOrderNumber(): Promise<string> {
     const count = await this.prisma.order.count();
@@ -188,17 +217,39 @@ export class OrdersService {
     return order;
   }
 
-  async adminUpdateStatus(id: string, status: OrderStatus, note?: string) {
+  async adminUpdateStatus(id: string, status: OrderStatus, note?: string, otp?: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
 
-    return this.prisma.order.update({
+    const data: Record<string, unknown> = { status, statusHistory: { create: { status, note } } };
+
+    if (status === OrderStatus.DELIVERED && order.requiresDeliveryOtp) {
+      if (!otp || otp.trim() !== order.deliveryOtp) {
+        throw new BadRequestException('Incorrect delivery OTP. Ask the customer for the OTP shown in their app.');
+      }
+      data.deliveryOtpVerifiedAt = new Date();
+    }
+
+    const updated = await this.prisma.order.update({
       where: { id },
-      data: {
-        status,
-        statusHistory: { create: { status, note } },
-      },
+      data,
       include: { items: true, payment: true, statusHistory: { orderBy: { createdAt: 'asc' } } },
     });
+
+    const notif = STATUS_NOTIFICATIONS[status];
+    if (notif) {
+      await this.notifications.create(order.retailerId, notif.type, notif.title, notif.body(order.orderNumber), order.id);
+    }
+
+    return updated;
+  }
+
+  async adminSetRequiresDeliveryOtp(id: string, requiresDeliveryOtp: boolean) {
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status === OrderStatus.DELIVERED || order.status === OrderStatus.CANCELLED) {
+      throw new BadRequestException('Cannot change delivery OTP settings on a completed order');
+    }
+    return this.prisma.order.update({ where: { id }, data: { requiresDeliveryOtp } });
   }
 }

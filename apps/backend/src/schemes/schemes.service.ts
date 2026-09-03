@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { SchemeType } from '@prisma/client';
+import { SchemeType, NotificationType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface UpsertSchemeDto {
   title: string;
@@ -21,7 +22,7 @@ export interface UpsertSchemeDto {
 
 @Injectable()
 export class SchemesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async listActive() {
     const now = new Date();
@@ -36,10 +37,22 @@ export class SchemesService {
     return this.prisma.scheme.findMany({ include: { product: true }, orderBy: { createdAt: 'desc' } });
   }
 
-  create(dto: UpsertSchemeDto) {
-    return this.prisma.scheme.create({
+  async create(dto: UpsertSchemeDto) {
+    const scheme = await this.prisma.scheme.create({
       data: { ...dto, startDate: new Date(dto.startDate), endDate: new Date(dto.endDate) },
     });
+
+    if (scheme.active) {
+      const retailers = await this.prisma.retailer.findMany({ where: { status: 'APPROVED' }, select: { id: true } });
+      await this.notifications.createForRetailers(
+        retailers.map((r) => r.id),
+        NotificationType.NEW_SCHEME,
+        'New Scheme Available',
+        `${scheme.title} — ${scheme.description}`,
+      );
+    }
+
+    return scheme;
   }
 
   async update(id: string, dto: Partial<UpsertSchemeDto>) {

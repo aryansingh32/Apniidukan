@@ -16,12 +16,14 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PricingModule } from './pricing/pricing.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     PricingModule,
+    NotificationsModule,
     AuthModule,
     AdminAuthModule,
     RetailersModule,

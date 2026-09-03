@@ -19,7 +19,17 @@ export class AdminOrdersController {
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: OrderStatus, @Body('note') note?: string) {
-    return this.service.adminUpdateStatus(id, status, note);
+  updateStatus(
+    @Param('id') id: string,
+    @Body('status') status: OrderStatus,
+    @Body('note') note?: string,
+    @Body('otp') otp?: string,
+  ) {
+    return this.service.adminUpdateStatus(id, status, note, otp);
+  }
+
+  @Patch(':id/delivery-otp-toggle')
+  setRequiresDeliveryOtp(@Param('id') id: string, @Body('requiresDeliveryOtp') requiresDeliveryOtp: boolean) {
+    return this.service.adminSetRequiresDeliveryOtp(id, requiresDeliveryOtp);
   }
 }

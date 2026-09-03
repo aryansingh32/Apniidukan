@@ -180,6 +180,7 @@ qualifying `BUY_X_GET_Y_FREE` scheme).
   "gstAmount": 5690.02, "totalAmount": 37301.22,
   "appliedSchemes": { "tradeScheme": {...} , "freeGoodsSchemes": [...] },
   "deliverySlotId": "uuid", "deliveryDate": "2026-09-03T00:00:00.000Z",
+  "requiresDeliveryOtp": true, "deliveryOtp": "6170", "deliveryOtpVerifiedAt": null,
   "status": "PAYMENT_PENDING",
   "items": [ { "id", "productId", "productNameSnapshot", "brandSnapshot",
     "packSizeSnapshot", "caseQty", "freeCaseQty", "pricePerCase", "mrpPerUnit",
@@ -202,6 +203,21 @@ DELIVERED/CANCELLED. Render this list as the order tracking timeline.
 `UNPAID → UNDER_REVIEW → PAYMENT_APPROVED` (happy path) or `→ PAYMENT_REJECTED` (then
 the retailer can resubmit a UTR, which puts it back to `UNDER_REVIEW`).
 
+### Delivery OTP verification
+
+Like Amazon/Flipkart, delivery can require the customer to read out a one-time code to
+whoever hands over the goods before the order is marked delivered. `deliveryOtp` is
+generated (a random 4-digit string) the moment an order's payment is approved
+(`Order.status` → `CONFIRMED`) and is included in every order response the retailer
+can see from that point on — **show it prominently on the order tracking screen**
+once `status` is `CONFIRMED` or later, with copy like "Share this OTP with the
+delivery person: 6170", but only when `requiresDeliveryOtp` is `true`. Admin can opt
+a specific order out of this (`requiresDeliveryOtp: false`) via
+`PATCH /admin/orders/:id/delivery-otp-toggle`; when opted out, don't show any OTP UI
+for that order. There is no separate driver app in this slice — whoever is operating
+`PATCH /admin/orders/:id/status` to mark `DELIVERED` is the one entering the code the
+customer reads out to them (see Admin endpoints below).
+
 ## Payment / UPI / UTR (retailer, APPROVED only)
 
 - `GET /orders/:orderId/payment` → payment row plus `payeeName` and `upiDeepLink`
@@ -214,6 +230,30 @@ the retailer can resubmit a UTR, which puts it back to `UNDER_REVIEW`).
   order (i.e. don't let the user submit twice while pending). `screenshotUrl` is just a
   string field — there's no file upload endpoint in this slice; if you build a proof
   upload UI, stash it as a data URL or a placeholder path in this field.
+
+## Notifications (retailer, any status — including PENDING/REJECTED/SUSPENDED, since
+account-status-change notices need to reach the retailer before they're APPROVED)
+
+- `GET /notifications` → most recent 50, newest first: `[{ id, type, title, body,
+  orderId, read, createdAt }]`. `orderId` is present (link to order detail) for
+  order/payment-related notifications, `null` for account-status and broadcast ones.
+- `GET /notifications/unread-count` → `{ count }` — poll this (or refetch on screen
+  focus) to drive the Home bell icon's badge.
+- `POST /notifications/:id/read` → marks one notification read.
+- `POST /notifications/read-all` → marks all of the retailer's notifications read.
+
+Notifications are created server-side automatically on: payment approved/rejected,
+order status → DISPATCHED/OUT_FOR_DELIVERY/DELIVERED/CANCELLED, retailer account
+approved/rejected/suspended, and a new active scheme being created (broadcast to all
+APPROVED retailers). There is no push-notification delivery in this slice (no device
+token registration, no OS-level push) — this is purely an in-app notification center;
+build the bell icon/list against it accordingly, and treat it as something the user
+checks when they open the app, not something that wakes their phone.
+
+`NotificationType` enum: `ORDER_CONFIRMED | PAYMENT_VERIFIED | PAYMENT_REJECTED |
+ORDER_DISPATCHED | OUT_FOR_DELIVERY | ORDER_DELIVERED | ORDER_CANCELLED | NEW_SCHEME |
+ACCOUNT_APPROVED | ACCOUNT_REJECTED | ACCOUNT_SUSPENDED | BROADCAST` (`ORDER_CONFIRMED`
+is reserved/currently unused — `PAYMENT_VERIFIED` covers that transition instead).
 
 ## Admin endpoints
 
@@ -241,10 +281,20 @@ All under `Authorization: Bearer <admin token>`.
 - Delivery slots: `GET/POST /admin/delivery-slots`, `PATCH /admin/delivery-slots/:id`,
   `DELETE /admin/delivery-slots/:id` (soft — sets inactive)
 - Orders: `GET /admin/orders?status=`, `GET /admin/orders/:id`, `PATCH
-  /admin/orders/:id/status` `{ status, note? }` — moves the order through the
-  operational pipeline (PICKING/PACKED/DISPATCHED/OUT_FOR_DELIVERY/DELIVERED/CANCELLED)
+  /admin/orders/:id/status` `{ status, note?, otp? }` — moves the order through the
+  operational pipeline (PICKING/PACKED/DISPATCHED/OUT_FOR_DELIVERY/DELIVERED/CANCELLED).
+  Moving to `DELIVERED` on an order where `requiresDeliveryOtp` is `true` requires
+  `otp` to exactly match the order's `deliveryOtp` — 400
+  `"Incorrect delivery OTP..."` otherwise; when `requiresDeliveryOtp` is `false`, `otp`
+  is ignored/not needed. `PATCH /admin/orders/:id/delivery-otp-toggle`
+  `{ requiresDeliveryOtp }` opts a specific order in/out of that requirement (400 if
+  the order is already DELIVERED/CANCELLED).
 - Payments: `GET /admin/payments?status=UNDER_REVIEW` (includes `order.retailer`), `POST
-  /admin/payments/:id/approve`, `POST /admin/payments/:id/reject` `{ reason }`
+  /admin/payments/:id/approve` (also generates the order's `deliveryOtp` and fires a
+  `PAYMENT_VERIFIED` notification), `POST /admin/payments/:id/reject` `{ reason }`
+  (fires a `PAYMENT_REJECTED` notification)
+- Notifications: `POST /admin/notifications/broadcast` `{ title, body }` → sends a
+  `BROADCAST`-type notification to every `APPROVED` retailer, returns `{ count }`.
 
 ## Field/enum reference
 
@@ -258,12 +308,15 @@ All under `Authorization: Bearer <admin token>`.
   `PAYMENT_APPROVED`, `PAYMENT_REJECTED` — `UTR_SUBMITTED` exists in the schema but is
   currently unused, treat it the same as `UNDER_REVIEW` if you ever see it)
 - `SchemeType`: `ORDER_VALUE_DISCOUNT | BUY_X_GET_Y_FREE`
+- `NotificationType`: see the Notifications section above
 
 ## What's intentionally out of scope in this vertical slice
 
-No returns/credit-notes endpoints, no notifications endpoints, no GST invoice PDF
-endpoint, no inventory-batch/FEFO tracking, no offline-sync/idempotency-key endpoints,
-no barcode-scanner-specific endpoint beyond `GET /products/barcode/:code`, no file
-upload endpoint (image/screenshot fields are plain URL strings). Build the UI to
-degrade gracefully (e.g. hide "Download Invoice" or show "Coming soon") rather than
-calling endpoints that don't exist.
+No returns/credit-notes endpoints, no GST invoice PDF endpoint, no inventory-batch/FEFO
+tracking, no offline-sync/idempotency-key endpoints, no barcode-scanner-specific
+endpoint beyond `GET /products/barcode/:code`, no file upload endpoint (image/screenshot
+fields are plain URL strings), no OS-level push notifications (in-app notification
+center only — see Notifications above), no separate driver app (delivery OTP entry
+happens through the admin order-status endpoint). Build the UI to degrade gracefully
+(e.g. hide "Download Invoice" or show "Coming soon") rather than calling endpoints
+that don't exist.

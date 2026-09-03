@@ -7,9 +7,10 @@ import { PaymentsService } from './payments.service';
 import { RetailerAuthGuard } from '../common/guards/retailer-auth.guard';
 import { RetailerApprovedGuard } from '../common/guards/retailer-approved.guard';
 import { AdminAuthGuard } from '../common/guards/admin-auth.guard';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [JwtModule.register({}), ConfigModule],
+  imports: [JwtModule.register({}), ConfigModule, NotificationsModule],
   controllers: [PaymentsController, AdminPaymentsController],
   providers: [PaymentsService, RetailerAuthGuard, RetailerApprovedGuard, AdminAuthGuard],
 })

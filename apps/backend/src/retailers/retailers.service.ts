@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { RetailerStatus } from '@prisma/client';
+import { RetailerStatus, NotificationType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface RegisterRetailerDto {
   ownerName: string;
@@ -14,7 +15,7 @@ export interface RegisterRetailerDto {
 
 @Injectable()
 export class RetailersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async getMe(retailerId: string) {
     const retailer = await this.prisma.retailer.findUnique({ where: { id: retailerId } });
@@ -74,6 +75,12 @@ export class RetailersService {
       data: { status: RetailerStatus.APPROVED, rejectionReason: null },
     });
     await this.log(adminId, 'RETAILER_APPROVED', id, { previousStatus: retailer.status });
+    await this.notifications.create(
+      id,
+      NotificationType.ACCOUNT_APPROVED,
+      'Account Approved',
+      'Your shop has been approved. You can now browse products and place orders.',
+    );
     return updated;
   }
 
@@ -84,6 +91,12 @@ export class RetailersService {
       data: { status: RetailerStatus.REJECTED, rejectionReason: reason },
     });
     await this.log(adminId, 'RETAILER_REJECTED', id, { previousStatus: retailer.status, reason });
+    await this.notifications.create(
+      id,
+      NotificationType.ACCOUNT_REJECTED,
+      'Account Not Approved',
+      `Your shop registration needs attention: ${reason}`,
+    );
     return updated;
   }
 
@@ -91,6 +104,12 @@ export class RetailersService {
     const retailer = await this.getExisting(id);
     const updated = await this.prisma.retailer.update({ where: { id }, data: { status: RetailerStatus.SUSPENDED } });
     await this.log(adminId, 'RETAILER_SUSPENDED', id, { previousStatus: retailer.status });
+    await this.notifications.create(
+      id,
+      NotificationType.ACCOUNT_SUSPENDED,
+      'Account Suspended',
+      'Your account has been suspended. Please contact support for details.',
+    );
     return updated;
   }
 

@@ -478,6 +478,15 @@ async function main() {
   console.log('Creating sample orders...');
   const [retailer1, retailer2, retailer3] = approvedRetailers;
 
+  const HAS_DELIVERY_OTP_STATUSES: OrderStatus[] = [
+    OrderStatus.CONFIRMED,
+    OrderStatus.PICKING,
+    OrderStatus.PACKED,
+    OrderStatus.DISPATCHED,
+    OrderStatus.OUT_FOR_DELIVERY,
+    OrderStatus.DELIVERED,
+  ];
+
   async function createOrder(opts: {
     retailerId: string;
     orderNumberSuffix: number;
@@ -486,6 +495,7 @@ async function main() {
     status: OrderStatus;
     paymentStatus: PaymentStatus;
     daysAgo: number;
+    requiresDeliveryOtp?: boolean;
   }) {
     const lineData = opts.items.map((it) => {
       const product = products.find((p) => p.sku === it.sku)!;
@@ -531,6 +541,11 @@ async function main() {
         deliverySlotId: opts.slotId,
         deliveryDate: createdAt,
         status: opts.status,
+        requiresDeliveryOtp: opts.requiresDeliveryOtp ?? true,
+        deliveryOtp: HAS_DELIVERY_OTP_STATUSES.includes(opts.status)
+          ? Math.floor(1000 + Math.random() * 9000).toString()
+          : null,
+        deliveryOtpVerifiedAt: opts.status === OrderStatus.DELIVERED ? createdAt : null,
         createdAt,
         updatedAt: createdAt,
         items: { create: lineData },
@@ -552,7 +567,7 @@ async function main() {
     return order;
   }
 
-  await createOrder({
+  const order0 = await createOrder({
     retailerId: retailer1.id,
     orderNumberSuffix: 0,
     items: [
@@ -605,6 +620,7 @@ async function main() {
     status: OrderStatus.DISPATCHED,
     paymentStatus: PaymentStatus.PAYMENT_APPROVED,
     daysAgo: 2,
+    requiresDeliveryOtp: false,
   });
 
   await createOrder({
@@ -663,7 +679,7 @@ async function main() {
     daysAgo: 5,
   });
 
-  await createOrder({
+  const order9 = await createOrder({
     retailerId: retailer1.id,
     orderNumberSuffix: 9,
     items: [
@@ -674,6 +690,55 @@ async function main() {
     status: OrderStatus.CONFIRMED,
     paymentStatus: PaymentStatus.PAYMENT_APPROVED,
     daysAgo: 0,
+  });
+
+  console.log('Creating sample notifications...');
+  const dayMs = 24 * 60 * 60 * 1000;
+  await prisma.notification.createMany({
+    data: [
+      {
+        retailerId: retailer1.id,
+        type: 'PAYMENT_VERIFIED',
+        title: 'Payment Verified',
+        body: `Your payment for order ${order9.orderNumber} has been verified. Your order is now confirmed.`,
+        orderId: order9.id,
+        read: false,
+        createdAt: new Date(),
+      },
+      {
+        retailerId: retailer1.id,
+        type: 'ORDER_DELIVERED',
+        title: 'Order Delivered',
+        body: `Your order ${order0.orderNumber} has been delivered. Thank you for ordering with us!`,
+        orderId: order0.id,
+        read: true,
+        createdAt: new Date(Date.now() - 7 * dayMs),
+      },
+      {
+        retailerId: retailer1.id,
+        type: 'NEW_SCHEME',
+        title: 'New Scheme Available',
+        body: 'Lux Soap — Buy 10 Get 1 Free — Stock up now, limited period scheme.',
+        read: true,
+        createdAt: new Date(Date.now() - 3 * dayMs),
+      },
+      {
+        retailerId: retailer2.id,
+        type: 'ORDER_DISPATCHED',
+        title: 'Order Dispatched',
+        body: 'Your order B2B10004 has been dispatched and is on its way.',
+        read: false,
+        createdAt: new Date(Date.now() - 2 * dayMs),
+      },
+      {
+        retailerId: retailer3.id,
+        type: 'PAYMENT_REJECTED',
+        title: 'Payment Rejected',
+        body: 'Your payment for order B2B10007 could not be verified: UTR does not match any received payment. Please check and resubmit.',
+        read: false,
+        createdAt: new Date(Date.now() - 1 * dayMs),
+      },
+    ],
   });
 
   console.log('Seed complete.');

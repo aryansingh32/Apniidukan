@@ -1,11 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus, NotificationType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+
+function generateDeliveryOtp(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService, private config: ConfigService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+    private notifications: NotificationsService,
+  ) {}
 
   async getForOrder(retailerId: string, orderId: string) {
     const order = await this.prisma.order.findFirst({ where: { id: orderId, retailerId }, include: { payment: true } });
@@ -59,7 +68,7 @@ export class PaymentsService {
   }
 
   async adminApprove(paymentId: string, adminId: string) {
-    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId }, include: { order: true } });
     if (!payment) throw new NotFoundException('Payment not found');
 
     const updated = await this.prisma.payment.update({
@@ -71,6 +80,7 @@ export class PaymentsService {
       where: { id: payment.orderId },
       data: {
         status: OrderStatus.CONFIRMED,
+        deliveryOtp: generateDeliveryOtp(),
         statusHistory: { create: { status: OrderStatus.CONFIRMED, note: 'Payment verified by admin. Order confirmed.' } },
       },
     });
@@ -79,12 +89,20 @@ export class PaymentsService {
       data: { actorType: 'ADMIN', actorId: adminId, action: 'PAYMENT_APPROVED', entityType: 'Payment', entityId: paymentId },
     });
 
+    await this.notifications.create(
+      payment.order.retailerId,
+      NotificationType.PAYMENT_VERIFIED,
+      'Payment Verified',
+      `Your payment for order ${payment.order.orderNumber} has been verified. Your order is now confirmed.`,
+      payment.order.id,
+    );
+
     return updated;
   }
 
   async adminReject(paymentId: string, adminId: string, reason: string) {
     if (!reason) throw new BadRequestException('Rejection reason is required');
-    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId }, include: { order: true } });
     if (!payment) throw new NotFoundException('Payment not found');
 
     const updated = await this.prisma.payment.update({
@@ -100,6 +118,14 @@ export class PaymentsService {
     await this.prisma.auditLog.create({
       data: { actorType: 'ADMIN', actorId: adminId, action: 'PAYMENT_REJECTED', entityType: 'Payment', entityId: paymentId, metadata: { reason } },
     });
+
+    await this.notifications.create(
+      payment.order.retailerId,
+      NotificationType.PAYMENT_REJECTED,
+      'Payment Rejected',
+      `Your payment for order ${payment.order.orderNumber} could not be verified: ${reason}. Please resubmit your UTR.`,
+      payment.order.id,
+    );
 
     return updated;
   }

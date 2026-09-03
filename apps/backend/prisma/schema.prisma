@@ -67,8 +67,9 @@ model Retailer {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  cart   Cart?
-  orders Order[]
+  cart          Cart?
+  orders        Order[]
+  notifications Notification[]
 }
 
 model OtpRequest {
@@ -205,25 +206,28 @@ model CartItem {
 }
 
 model Order {
-  id             String               @id @default(uuid())
-  orderNumber    String               @unique
-  retailerId     String
-  retailer       Retailer             @relation(fields: [retailerId], references: [id])
-  items          OrderItem[]
-  subtotal       Decimal              @db.Decimal(10, 2)
-  tradeDiscount  Decimal              @default(0) @db.Decimal(10, 2)
-  schemeDiscount Decimal              @default(0) @db.Decimal(10, 2)
-  gstAmount      Decimal              @default(0) @db.Decimal(10, 2)
-  totalAmount    Decimal              @db.Decimal(10, 2)
-  appliedSchemes Json?
-  deliverySlotId String?
-  deliverySlot   DeliverySlot?        @relation(fields: [deliverySlotId], references: [id])
-  deliveryDate   DateTime?
-  status         OrderStatus          @default(PAYMENT_PENDING)
-  statusHistory  OrderStatusHistory[]
-  payment        Payment?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id                    String               @id @default(uuid())
+  orderNumber           String               @unique
+  retailerId            String
+  retailer              Retailer             @relation(fields: [retailerId], references: [id])
+  items                 OrderItem[]
+  subtotal              Decimal              @db.Decimal(10, 2)
+  tradeDiscount         Decimal              @default(0) @db.Decimal(10, 2)
+  schemeDiscount        Decimal              @default(0) @db.Decimal(10, 2)
+  gstAmount             Decimal              @default(0) @db.Decimal(10, 2)
+  totalAmount           Decimal              @db.Decimal(10, 2)
+  appliedSchemes        Json?
+  deliverySlotId        String?
+  deliverySlot          DeliverySlot?        @relation(fields: [deliverySlotId], references: [id])
+  deliveryDate          DateTime?
+  requiresDeliveryOtp   Boolean              @default(true)
+  deliveryOtp           String?
+  deliveryOtpVerifiedAt DateTime?
+  status                OrderStatus          @default(PAYMENT_PENDING)
+  statusHistory         OrderStatusHistory[]
+  payment               Payment?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 }
 
 model OrderItem {
@@ -281,4 +285,33 @@ model AuditLog {
   entityId   String?
   metadata   Json?
   createdAt  DateTime @default(now())
+}
+
+enum NotificationType {
+  ORDER_CONFIRMED
+  PAYMENT_VERIFIED
+  PAYMENT_REJECTED
+  ORDER_DISPATCHED
+  OUT_FOR_DELIVERY
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+  NEW_SCHEME
+  ACCOUNT_APPROVED
+  ACCOUNT_REJECTED
+  ACCOUNT_SUSPENDED
+  BROADCAST
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  retailerId String
+  retailer   Retailer         @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  type       NotificationType
+  title      String
+  body       String
+  orderId    String?
+  read       Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  @@index([retailerId, read])
 }
