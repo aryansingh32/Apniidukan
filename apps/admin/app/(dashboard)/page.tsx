@@ -8,11 +8,45 @@ import { formatCurrency } from "@/lib/format";
 import StatCard from "@/components/StatCard";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/DataStates";
 import Badge from "@/components/Badge";
+import Button from "@/components/Button";
+import Modal from "@/components/Modal";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastBody, setBroadcastBody] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
+  const [broadcastResult, setBroadcastResult] = useState<number | null>(null);
+
+  const sendBroadcast = async () => {
+    if (!broadcastTitle.trim() || !broadcastBody.trim()) return;
+    setBroadcastSending(true);
+    setBroadcastError(null);
+    try {
+      const res = await api.post<{ count: number }>("/admin/notifications/broadcast", {
+        title: broadcastTitle.trim(),
+        body: broadcastBody.trim(),
+      });
+      setBroadcastResult(res.count);
+      setBroadcastTitle("");
+      setBroadcastBody("");
+    } catch (e) {
+      setBroadcastError(e instanceof ApiError ? e.message : "Failed to send notification.");
+    } finally {
+      setBroadcastSending(false);
+    }
+  };
+
+  const closeBroadcast = () => {
+    setBroadcastOpen(false);
+    setBroadcastError(null);
+    setBroadcastResult(null);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +73,13 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-slate-900">Dashboard</h1>
+        <Button variant="secondary" onClick={() => setBroadcastOpen(true)}>
+          Send notification to retailers
+        </Button>
+      </div>
+
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
         <StatCard label="Total Orders" value={stats.totalOrders} />
         <StatCard label="Today's Orders" value={stats.todaysOrders} accent="blue" />
@@ -108,6 +149,55 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      <Modal open={broadcastOpen} onClose={closeBroadcast} title="Send notification to retailers">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Sends an in-app notification to every <span className="font-medium">approved</span> retailer — e.g. a new
+            scheme, a delivery update, or a general announcement.
+          </p>
+          {broadcastResult !== null ? (
+            <div className="rounded-md bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 ring-1 ring-inset ring-emerald-200">
+              Sent to {broadcastResult} retailer{broadcastResult === 1 ? "" : "s"}.
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Title</label>
+                <input
+                  className="input"
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  placeholder="e.g. Diwali Bonanza"
+                  maxLength={100}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Message</label>
+                <textarea
+                  rows={3}
+                  className="input"
+                  value={broadcastBody}
+                  onChange={(e) => setBroadcastBody(e.target.value)}
+                  placeholder="Extra 10% off this week only…"
+                  maxLength={300}
+                />
+              </div>
+              {broadcastError && <p className="text-sm text-red-600">{broadcastError}</p>}
+            </>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeBroadcast}>
+              {broadcastResult !== null ? "Close" : "Cancel"}
+            </Button>
+            {broadcastResult === null && (
+              <Button onClick={sendBroadcast} loading={broadcastSending} disabled={!broadcastTitle.trim() || !broadcastBody.trim()}>
+                Send
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -172,6 +172,9 @@ export interface Order {
   appliedSchemes?: unknown;
   deliverySlotId: string;
   deliveryDate: string;
+  requiresDeliveryOtp: boolean;
+  deliveryOtp: string | null;
+  deliveryOtpVerifiedAt: string | null;
   status: OrderStatus;
   items?: OrderItem[];
   payment?: Payment;

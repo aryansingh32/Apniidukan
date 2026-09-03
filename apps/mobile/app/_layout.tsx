@@ -24,6 +24,7 @@ function NavigationRoot() {
       <Stack.Screen name="cart" />
       <Stack.Screen name="checkout" />
       <Stack.Screen name="payment/[orderId]" />
+      <Stack.Screen name="notifications" />
     </Stack>
   );
 }

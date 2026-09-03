@@ -1,5 +1,6 @@
 import { apiFetch } from './api';
 import type {
+  AppNotification,
   Banner,
   Cart,
   Category,
@@ -112,3 +113,14 @@ export const submitUtr = (orderId: string, utr: string, screenshotUrl?: string) 
     method: 'POST',
     body: { utr, screenshotUrl },
   });
+
+// ---- Notifications ----
+export const getNotifications = () => apiFetch<AppNotification[]>('/notifications');
+
+export const getUnreadNotificationCount = () => apiFetch<{ count: number }>('/notifications/unread-count');
+
+export const markNotificationRead = (id: string) =>
+  apiFetch<{ success: boolean }>(`/notifications/${id}/read`, { method: 'POST' });
+
+export const markAllNotificationsRead = () =>
+  apiFetch<{ success: boolean }>('/notifications/read-all', { method: 'POST' });

@@ -29,8 +29,10 @@ export default function OrderDetailPage() {
 
   const [statusModal, setStatusModal] = useState<{ status: OrderStatus; label: string } | null>(null);
   const [note, setNote] = useState("");
+  const [otpInput, setOtpInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [otpToggling, setOtpToggling] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -48,18 +50,26 @@ export default function OrderDetailPage() {
 
   const openStatusModal = (status: OrderStatus, label: string) => {
     setNote("");
+    setOtpInput("");
     setSubmitError(null);
     setStatusModal({ status, label });
   };
 
+  const needsOtpForModal = statusModal?.status === "DELIVERED" && !!order?.requiresDeliveryOtp;
+
   const submitStatus = async () => {
     if (!statusModal || !order) return;
+    if (needsOtpForModal && otpInput.trim().length === 0) {
+      setSubmitError("Enter the delivery OTP the customer read out to confirm delivery.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
       await api.patch(`/admin/orders/${order.id}/status`, {
         status: statusModal.status,
         note: note.trim() || undefined,
+        otp: needsOtpForModal ? otpInput.trim() : undefined,
       });
       setStatusModal(null);
       load();
@@ -67,6 +77,21 @@ export default function OrderDetailPage() {
       setSubmitError(e instanceof ApiError ? e.message : "Failed to update status.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const toggleRequiresOtp = async () => {
+    if (!order) return;
+    setOtpToggling(true);
+    try {
+      await api.patch(`/admin/orders/${order.id}/delivery-otp-toggle`, {
+        requiresDeliveryOtp: !order.requiresDeliveryOtp,
+      });
+      load();
+    } catch {
+      // surfaced via the reloaded order state staying unchanged; the toggle is low-stakes
+    } finally {
+      setOtpToggling(false);
     }
   };
 
@@ -231,6 +256,34 @@ export default function OrderDetailPage() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Delivery OTP</h3>
+              {order.status !== "DELIVERED" && order.status !== "CANCELLED" && (
+                <button
+                  type="button"
+                  onClick={toggleRequiresOtp}
+                  disabled={otpToggling}
+                  className="rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {order.requiresDeliveryOtp ? "Required — tap to opt out" : "Opted out — tap to require"}
+                </button>
+              )}
+            </div>
+            {order.requiresDeliveryOtp ? (
+              order.deliveryOtp ? (
+                <dl className="space-y-2 text-sm">
+                  <Row label="Code" value={order.deliveryOtp} />
+                  <Row label="Verified" value={order.deliveryOtpVerifiedAt ? formatDateTime(order.deliveryOtpVerifiedAt) : "Not yet"} />
+                </dl>
+              ) : (
+                <p className="text-sm text-slate-500">Generated once payment is verified.</p>
+              )
+            ) : (
+              <p className="text-sm text-slate-500">This order is opted out — it can be marked delivered without an OTP.</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="mb-3 text-sm font-semibold text-slate-900">Payment</h3>
             {order.payment ? (
               <dl className="space-y-2 text-sm">
@@ -259,6 +312,22 @@ export default function OrderDetailPage() {
           <p className="text-sm text-slate-600">
             Move this order to <span className="font-semibold text-slate-900">{statusModal?.label}</span>.
           </p>
+          {needsOtpForModal && (
+            <div className="rounded-md bg-amber-50 px-3 py-2.5 ring-1 ring-inset ring-amber-200">
+              <label className="mb-1 block text-sm font-medium text-amber-900">Delivery OTP</label>
+              <p className="mb-2 text-xs text-amber-700">
+                Ask the customer for the OTP shown in their app and enter it here to confirm delivery.
+              </p>
+              <input
+                className="input"
+                value={otpInput}
+                onChange={(e) => setOtpInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
+                placeholder="4-digit OTP"
+                inputMode="numeric"
+                autoFocus
+              />
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Note (optional)</label>
             <textarea

@@ -299,6 +299,9 @@ export interface Order {
   appliedSchemes: AppliedSchemesSummary | null;
   deliverySlotId: string;
   deliveryDate: string;
+  requiresDeliveryOtp: boolean;
+  deliveryOtp: string | null;
+  deliveryOtpVerifiedAt: string | null;
   status: OrderStatus;
   items: OrderItem[];
   payment: Payment;
@@ -312,6 +315,30 @@ export interface PaymentInfo extends Payment {
   upiDeepLink: string;
   orderId?: string;
   orderNumber?: string;
+}
+
+export type NotificationType =
+  | 'ORDER_CONFIRMED'
+  | 'PAYMENT_VERIFIED'
+  | 'PAYMENT_REJECTED'
+  | 'ORDER_DISPATCHED'
+  | 'OUT_FOR_DELIVERY'
+  | 'ORDER_DELIVERED'
+  | 'ORDER_CANCELLED'
+  | 'NEW_SCHEME'
+  | 'ACCOUNT_APPROVED'
+  | 'ACCOUNT_REJECTED'
+  | 'ACCOUNT_SUSPENDED'
+  | 'BROADCAST';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  orderId: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface ApiErrorBody {

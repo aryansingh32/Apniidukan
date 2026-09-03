@@ -117,6 +117,25 @@ export default function OrderDetailScreen() {
           </View>
         </Card>
 
+        {order.requiresDeliveryOtp && order.deliveryOtp ? (
+          <>
+            <Text style={styles.sectionTitle}>Delivery OTP</Text>
+            {order.status === 'DELIVERED' ? (
+              <Card style={styles.otpVerifiedCard}>
+                <Ionicons name="shield-checkmark" size={20} color={colors.success} />
+                <Text style={styles.otpVerifiedText}>Delivery verified with OTP {order.deliveryOtp}</Text>
+              </Card>
+            ) : (
+              <Card style={styles.otpCard}>
+                <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} />
+                <Text style={styles.otpLabel}>Share this OTP with the delivery agent</Text>
+                <Text style={styles.otpValue}>{order.deliveryOtp}</Text>
+                <Text style={styles.otpHint}>Only share it once your order has physically arrived — this confirms delivery.</Text>
+              </Card>
+            )}
+          </>
+        ) : null}
+
         <Text style={styles.sectionTitle}>Order Timeline</Text>
         <Card>
           {order.statusHistory.map((h, i) => (
@@ -182,6 +201,12 @@ const styles = StyleSheet.create({
   timelineStatus: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   timelineNote: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   timelineDate: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 },
+  otpCard: { alignItems: 'center', backgroundColor: colors.primarySoft, borderColor: colors.primarySoft, paddingVertical: spacing.lg },
+  otpLabel: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text, marginTop: spacing.sm, textAlign: 'center' },
+  otpValue: { fontSize: 34, fontWeight: '800', color: colors.primary, letterSpacing: 6, marginTop: spacing.sm },
+  otpHint: { fontSize: fontSize.xs, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.md },
+  otpVerifiedCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.successSoft, borderColor: colors.successSoft },
+  otpVerifiedText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   disabledRow: { marginTop: spacing.xl, alignItems: 'center' },
   comingSoonHint: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: spacing.sm },
 });

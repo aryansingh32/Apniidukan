@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { Screen } from '@/components/Screen';
 import { CartButton } from '@/components/CartButton';
@@ -10,17 +10,20 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { SectionHeader } from '@/components/SectionHeader';
 import { SchemeCard } from '@/components/SchemeCard';
+import { ProductGridCard } from '@/components/ProductGridCard';
 import { LoadingState } from '@/components/States';
 import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { useAsync } from '@/hooks/useAsync';
-import { getBanners, getCategories, getQuickReorder, getSchemes } from '@/lib/endpoints';
+import { getBanners, getCategories, getProducts, getQuickReorder, getSchemes, getUnreadNotificationCount } from '@/lib/endpoints';
 import { greetingForNow } from '@/lib/format';
 import type { Banner } from '@/lib/types';
 import { colors, fontSize, radius, spacing } from '@/theme';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const GRID_GAP = spacing.md;
+const GRID_CARD_W = (SCREEN_WIDTH - spacing.lg * 2 - GRID_GAP) / 2;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,6 +35,16 @@ export default function HomeScreen() {
   const categories = useAsync(useCallback(() => getCategories(), []));
   const quickReorder = useAsync(useCallback(() => getQuickReorder(), []));
   const schemes = useAsync(useCallback(() => getSchemes(), []));
+  const catalog = useAsync(useCallback(() => getProducts(), []));
+
+  const [unreadCount, setUnreadCount] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      getUnreadNotificationCount()
+        .then((r) => setUnreadCount(r.count))
+        .catch(() => {});
+    }, [])
+  );
 
   async function handleReorder(orderId: string, mode: 'repeat' | 'edit') {
     setReorderBusy(mode);
@@ -55,12 +68,13 @@ export default function HomeScreen() {
       scroll
       padded={false}
       contentStyle={styles.content}
-      refreshing={banners.refreshing || categories.refreshing || quickReorder.refreshing || schemes.refreshing}
+      refreshing={banners.refreshing || categories.refreshing || quickReorder.refreshing || schemes.refreshing || catalog.refreshing}
       onRefresh={() => {
         banners.refresh();
         categories.refresh();
         quickReorder.refresh();
         schemes.refresh();
+        catalog.refresh();
       }}
     >
       {/* Header */}
@@ -73,8 +87,13 @@ export default function HomeScreen() {
             {retailer?.shopName ?? ''}
           </Text>
         </View>
-        <TouchableOpacity style={styles.iconBtn} hitSlop={8}>
+        <TouchableOpacity style={styles.iconBtn} hitSlop={8} onPress={() => router.push('/notifications')}>
           <Ionicons name="notifications-outline" size={20} color={colors.text} />
+          {unreadCount > 0 ? (
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
         <CartButton />
       </View>
@@ -176,6 +195,26 @@ export default function HomeScreen() {
           </ScrollView>
         )}
       </View>
+
+      {/* Browse Products — Amazon/Flipkart style catalog grid */}
+      <View style={styles.section}>
+        <SectionHeader title="Browse Products" actionLabel="See All" onAction={() => router.push('/(tabs)/categories')} />
+        {catalog.loading ? (
+          <View style={styles.productGrid}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} width={GRID_CARD_W} height={220} style={{ borderRadius: radius.lg, marginBottom: GRID_GAP }} />
+            ))}
+          </View>
+        ) : (catalog.data ?? []).length === 0 ? (
+          <Text style={styles.noSchemes}>No products available right now.</Text>
+        ) : (
+          <View style={styles.productGrid}>
+            {(catalog.data ?? []).slice(0, 8).map((p) => (
+              <ProductGridCard key={p.id} product={p} width={GRID_CARD_W} />
+            ))}
+          </View>
+        )}
+      </View>
     </Screen>
   );
 }
@@ -234,6 +273,22 @@ const styles = StyleSheet.create({
   greeting: { fontSize: fontSize.sm, color: colors.textSecondary },
   shopName: { fontSize: fontSize.xl, fontWeight: '800', color: colors.text, marginTop: 2 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  notifBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.bg,
+  },
+  notifBadgeText: { color: colors.white, fontSize: 9, fontWeight: '800' },
+  productGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   searchBar: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
