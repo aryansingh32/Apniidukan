@@ -154,6 +154,12 @@ export default function ProductForm({
         </Field>
       </div>
 
+      <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">
+        No expiry date here — expiry is set per <span className="font-medium">batch</span>, from this product&apos;s
+        page{product ? " below (Batches / lots)" : " once you save it"}, since one product can have several batches
+        expiring on different dates.
+      </p>
+
       <div className="border-t border-slate-200 pt-4">
         <h3 className="mb-3 text-sm font-semibold text-slate-900">Pricing &amp; tax</h3>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

@@ -54,6 +54,16 @@ export default function ProductsPage() {
         </Link>
       </div>
 
+      <div className="rounded-md bg-blue-50 px-3 py-2.5 text-sm text-blue-800 ring-1 ring-inset ring-blue-200">
+        Expiry dates aren&apos;t set here — they&apos;re set per <span className="font-medium">batch</span> (a
+        product can have several batches with different expiry dates at once). Open a product, then use its{" "}
+        <span className="font-medium">Batches / lots</span> section to stock one in. See the{" "}
+        <Link href="/expiry" className="font-medium underline">
+          Expiry Center
+        </Link>{" "}
+        for the bucketed overview across every batch.
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">

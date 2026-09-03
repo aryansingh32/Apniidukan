@@ -181,92 +181,6 @@ export default function ProductDetailPage() {
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
-          <h3 className="text-sm font-semibold text-slate-900">Bulk price slabs</h3>
-          <p className="text-xs text-slate-500">
-            Tiered pricing per case quantity. Buying price/case above is the base rate used below the first slab.
-          </p>
-        </div>
-
-        {slabs.length === 0 ? (
-          <div className="p-6">
-            <EmptyBlock message="No bulk price slabs configured for this product yet." />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-2.5 text-left font-medium text-slate-500">Min cases</th>
-                  <th className="px-6 py-2.5 text-left font-medium text-slate-500">Max cases</th>
-                  <th className="px-6 py-2.5 text-right font-medium text-slate-500">Price / case</th>
-                  <th className="px-6 py-2.5 text-right font-medium text-slate-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {slabs.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-2.5 font-medium text-slate-900">{s.minCases}</td>
-                    <td className="px-6 py-2.5 text-slate-600">{s.maxCases ?? "No limit"}</td>
-                    <td className="px-6 py-2.5 text-right text-slate-900">{formatCurrency(s.pricePerCase)}</td>
-                    <td className="px-6 py-2.5">
-                      <div className="flex justify-end">
-                        <Button size="sm" variant="danger" onClick={() => setRemoveSlabTarget(s)}>
-                          Remove
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="border-t border-slate-200 px-6 py-4">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Add a slab</p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Min cases</label>
-              <input
-                type="number"
-                min={1}
-                className="input w-28"
-                value={slabForm.minCases}
-                onChange={(e) => setSlabForm({ ...slabForm, minCases: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Max cases (optional)</label>
-              <input
-                type="number"
-                min={1}
-                className="input w-32"
-                placeholder="No limit"
-                value={slabForm.maxCases}
-                onChange={(e) => setSlabForm({ ...slabForm, maxCases: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Price / case (₹)</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className="input w-32"
-                value={slabForm.pricePerCase}
-                onChange={(e) => setSlabForm({ ...slabForm, pricePerCase: e.target.value })}
-              />
-            </div>
-            <Button onClick={addSlab} loading={addingSlab}>
-              Add slab
-            </Button>
-          </div>
-          {slabError && <p className="mt-2 text-sm text-red-600">{slabError}</p>}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-6 py-4">
           <h3 className="text-sm font-semibold text-slate-900">Batches / lots</h3>
           <p className="text-xs text-slate-500">
             Every unit sold is traceable to a batch — this is what backs delivery proof, FEFO
@@ -390,6 +304,92 @@ export default function ProductDetailPage() {
             </Button>
           </div>
           {batchError && <p className="mt-2 text-sm text-red-600">{batchError}</p>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-4">
+          <h3 className="text-sm font-semibold text-slate-900">Bulk price slabs</h3>
+          <p className="text-xs text-slate-500">
+            Tiered pricing per case quantity. Buying price/case above is the base rate used below the first slab.
+          </p>
+        </div>
+
+        {slabs.length === 0 ? (
+          <div className="p-6">
+            <EmptyBlock message="No bulk price slabs configured for this product yet." />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-2.5 text-left font-medium text-slate-500">Min cases</th>
+                  <th className="px-6 py-2.5 text-left font-medium text-slate-500">Max cases</th>
+                  <th className="px-6 py-2.5 text-right font-medium text-slate-500">Price / case</th>
+                  <th className="px-6 py-2.5 text-right font-medium text-slate-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {slabs.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-2.5 font-medium text-slate-900">{s.minCases}</td>
+                    <td className="px-6 py-2.5 text-slate-600">{s.maxCases ?? "No limit"}</td>
+                    <td className="px-6 py-2.5 text-right text-slate-900">{formatCurrency(s.pricePerCase)}</td>
+                    <td className="px-6 py-2.5">
+                      <div className="flex justify-end">
+                        <Button size="sm" variant="danger" onClick={() => setRemoveSlabTarget(s)}>
+                          Remove
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="border-t border-slate-200 px-6 py-4">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Add a slab</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Min cases</label>
+              <input
+                type="number"
+                min={1}
+                className="input w-28"
+                value={slabForm.minCases}
+                onChange={(e) => setSlabForm({ ...slabForm, minCases: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Max cases (optional)</label>
+              <input
+                type="number"
+                min={1}
+                className="input w-32"
+                placeholder="No limit"
+                value={slabForm.maxCases}
+                onChange={(e) => setSlabForm({ ...slabForm, maxCases: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Price / case (₹)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className="input w-32"
+                value={slabForm.pricePerCase}
+                onChange={(e) => setSlabForm({ ...slabForm, pricePerCase: e.target.value })}
+              />
+            </div>
+            <Button onClick={addSlab} loading={addingSlab}>
+              Add slab
+            </Button>
+          </div>
+          {slabError && <p className="mt-2 text-sm text-red-600">{slabError}</p>}
         </div>
       </div>
 
