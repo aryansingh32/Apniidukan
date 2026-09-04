@@ -57,11 +57,11 @@ export default function AccountScreen() {
           <Divider />
           <SettingsRow icon="book-outline" label="Hisaab / Ledger" subtitle="Track your running balance" disabled />
           <Divider />
-          <SettingsRow icon="document-outline" label="Invoices" subtitle="GST invoice downloads" disabled />
+          <SettingsRow icon="document-outline" label="Invoices" subtitle="GST invoice downloads" onPress={() => router.push('/invoices')} />
           <Divider />
-          <SettingsRow icon="return-down-back-outline" label="Returns" disabled />
+          <SettingsRow icon="return-down-back-outline" label="Returns" subtitle="Damaged goods and returns" onPress={() => router.push('/returns')} />
           <Divider />
-          <SettingsRow icon="pricetag-outline" label="Credit Notes" disabled />
+          <SettingsRow icon="pricetag-outline" label="Credit Notes" onPress={() => router.push('/credit-notes')} />
         </Card>
       </View>
 

@@ -3,6 +3,7 @@ import { OrdersService } from './orders.service';
 import { RetailerAuthGuard } from '../common/guards/retailer-auth.guard';
 import { RetailerApprovedGuard } from '../common/guards/retailer-approved.guard';
 import { CurrentRetailerId } from '../common/decorators/current-retailer.decorator';
+import { PaymentMethod } from '@prisma/client';
 
 @Controller('orders')
 @UseGuards(RetailerAuthGuard, RetailerApprovedGuard)
@@ -14,8 +15,10 @@ export class OrdersController {
     @CurrentRetailerId() retailerId: string,
     @Body('deliverySlotId') deliverySlotId: string,
     @Body('deliveryDate') deliveryDate?: string,
+    @Body('paymentMethod') paymentMethod?: PaymentMethod,
+    @Body('idempotencyKey') idempotencyKey?: string,
   ) {
-    return this.service.checkout(retailerId, deliverySlotId, deliveryDate);
+    return this.service.checkout(retailerId, deliverySlotId, deliveryDate, paymentMethod ?? PaymentMethod.UPI, idempotencyKey);
   }
 
   @Get('quick-reorder')

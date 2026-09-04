@@ -240,7 +240,11 @@ export type PaymentStatus =
   | 'UTR_SUBMITTED'
   | 'UNDER_REVIEW'
   | 'PAYMENT_APPROVED'
-  | 'PAYMENT_REJECTED';
+  | 'PAYMENT_REJECTED'
+  | 'COD_PENDING'
+  | 'COD_COLLECTED';
+
+export type PaymentMethod = 'UPI' | 'COD';
 
 // Note: the order-related endpoints (POST /orders, GET /orders, GET
 // /orders/:id, GET /orders/:orderId/payment) serialize Prisma Decimal
@@ -268,6 +272,7 @@ export interface OrderItem {
 export interface Payment {
   id: string;
   amount: number | string;
+  method: PaymentMethod;
   upiId: string | null;
   utr: string | null;
   screenshotUrl: string | null;
@@ -312,7 +317,7 @@ export interface Order {
 
 export interface PaymentInfo extends Payment {
   payeeName: string;
-  upiDeepLink: string;
+  upiDeepLink: string | null;
   orderId?: string;
   orderNumber?: string;
 }
@@ -408,4 +413,35 @@ export interface ApiErrorBody {
   statusCode: number;
   message: string | string[];
   error?: string;
+}
+
+// ---- Returns / Damaged Goods Claims + Credit Notes ----
+
+export type ReturnReason = 'DAMAGED' | 'WRONG_ITEM' | 'QUALITY_ISSUE' | 'EXPIRED_ON_ARRIVAL' | 'OTHER';
+export type ReturnStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+
+export interface ReturnRequest {
+  id: string;
+  returnNumber: string;
+  orderId: string;
+  orderItemId: string;
+  qty: number;
+  reason: ReturnReason;
+  note: string | null;
+  photoUrl: string | null;
+  status: ReturnStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  orderItem?: OrderItem;
+  creditNote?: CreditNote | null;
+}
+
+export interface CreditNote {
+  id: string;
+  creditNoteNumber: string;
+  returnRequestId: string;
+  amount: number | string;
+  reason: string;
+  createdAt: string;
+  returnRequest?: ReturnRequest;
 }

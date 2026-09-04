@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, openPdf } from "@/lib/api";
 import type { Order, OrderStatus } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import Badge from "@/components/Badge";
@@ -33,6 +33,9 @@ export default function OrderDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [otpToggling, setOtpToggling] = useState(false);
+  const [markingCod, setMarkingCod] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -95,6 +98,32 @@ export default function OrderDetailPage() {
     }
   };
 
+  const markCodCollected = async () => {
+    if (!order?.payment) return;
+    setMarkingCod(true);
+    try {
+      await api.post(`/admin/payments/${order.payment.id}/mark-cod-collected`);
+      load();
+    } catch {
+      // low-stakes action — the payment card stays as-is if it fails, admin can retry
+    } finally {
+      setMarkingCod(false);
+    }
+  };
+
+  const downloadInvoice = async () => {
+    if (!order) return;
+    setDownloadingInvoice(true);
+    setInvoiceError(null);
+    try {
+      await openPdf(`/admin/orders/${order.id}/invoice`);
+    } catch (e) {
+      setInvoiceError(e instanceof ApiError ? e.message : "Invoice not available yet.");
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
   if (loading) return <LoadingBlock label="Loading order…" />;
   if (error) return <ErrorBlock message={error} />;
   if (!order) return null;
@@ -102,6 +131,7 @@ export default function OrderDetailPage() {
   const nextStatus = FORWARD_TRANSITIONS[order.status];
   const canCancel = CANCELLABLE.includes(order.status);
   const isPaymentGated = order.status === "PAYMENT_PENDING" || order.status === "PAYMENT_VERIFICATION";
+  const invoiceEligible = !["PAYMENT_PENDING", "PAYMENT_VERIFICATION", "CANCELLED"].includes(order.status);
 
   return (
     <div className="space-y-6">
@@ -117,6 +147,11 @@ export default function OrderDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {invoiceEligible && (
+            <Button variant="secondary" onClick={downloadInvoice} loading={downloadingInvoice}>
+              Download Invoice
+            </Button>
+          )}
           {isPaymentGated && (
             <span className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-500">
               Payment status changes happen on the Payments page
@@ -287,9 +322,10 @@ export default function OrderDetailPage() {
             <h3 className="mb-3 text-sm font-semibold text-slate-900">Payment</h3>
             {order.payment ? (
               <dl className="space-y-2 text-sm">
+                <Row label="Method" value={order.payment.method === "COD" ? "Cash on Delivery" : "UPI"} />
                 <Row label="Status" value={order.payment.status.replaceAll("_", " ")} />
                 <Row label="Amount" value={formatCurrency(order.payment.amount)} />
-                <Row label="UTR" value={order.payment.utr || "—"} />
+                {order.payment.method === "UPI" && <Row label="UTR" value={order.payment.utr || "—"} />}
                 <Row label="Submitted" value={formatDateTime(order.payment.submittedAt)} />
                 {order.payment.rejectionReason && (
                   <div className="rounded-md bg-red-50 px-3 py-2 text-red-700 ring-1 ring-inset ring-red-200">
@@ -300,6 +336,12 @@ export default function OrderDetailPage() {
             ) : (
               <p className="text-sm text-slate-500">—</p>
             )}
+            {order.payment?.method === "COD" && order.payment.status === "COD_PENDING" && (
+              <Button size="sm" className="mt-3" onClick={markCodCollected} loading={markingCod}>
+                Mark cash collected
+              </Button>
+            )}
+            {invoiceError && <p className="mt-2 text-xs text-red-600">{invoiceError}</p>}
             <Link href="/payments" className="mt-3 inline-block text-sm text-blue-600 hover:underline">
               Go to Payments →
             </Link>

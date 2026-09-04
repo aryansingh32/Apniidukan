@@ -50,6 +50,13 @@ enum PaymentStatus {
   UNDER_REVIEW
   PAYMENT_APPROVED
   PAYMENT_REJECTED
+  COD_PENDING
+  COD_COLLECTED
+}
+
+enum PaymentMethod {
+  UPI
+  COD
 }
 
 model Retailer {
@@ -67,12 +74,14 @@ model Retailer {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  cart          Cart?
-  orders        Order[]
-  notifications Notification[]
-  ledgerEntries InventoryLedgerEntry[]
-  batchStocks   RetailerBatchStock[]
-  expiryClaims  ExpiryClaim[]
+  cart           Cart?
+  orders         Order[]
+  notifications  Notification[]
+  ledgerEntries  InventoryLedgerEntry[]
+  batchStocks    RetailerBatchStock[]
+  expiryClaims   ExpiryClaim[]
+  returnRequests ReturnRequest[]
+  creditNotes    CreditNote[]
 }
 
 model OtpRequest {
@@ -230,6 +239,9 @@ model Order {
   status                OrderStatus          @default(PAYMENT_PENDING)
   statusHistory         OrderStatusHistory[]
   payment               Payment?
+  invoice               Invoice?
+  returnRequests        ReturnRequest[]
+  idempotencyKey        String?              @unique
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 }
@@ -254,6 +266,7 @@ model OrderItem {
   lineTotal           Decimal @db.Decimal(10, 2)
 
   batchAllocations OrderItemBatchAllocation[]
+  returnRequests   ReturnRequest[]
 }
 
 model OrderStatusHistory {
@@ -270,7 +283,8 @@ model Payment {
   orderId           String        @unique
   order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   amount            Decimal       @db.Decimal(10, 2)
-  upiId             String
+  method            PaymentMethod @default(UPI)
+  upiId             String?
   utr               String?
   screenshotUrl     String?
   status            PaymentStatus @default(UNPAID)
@@ -310,6 +324,8 @@ enum NotificationType {
   BATCH_EXPIRED
   EXPIRY_CLAIM_APPROVED
   EXPIRY_CLAIM_REJECTED
+  RETURN_APPROVED
+  RETURN_REJECTED
 }
 
 model Notification {
@@ -505,4 +521,83 @@ model ExpiryClaimItem {
   unitCreditAmount         Decimal?                    @db.Decimal(10, 2)
   totalCreditAmount        Decimal?                    @db.Decimal(10, 2)
   rejectionReasonCode      ExpiryClaimRejectionReason?
+}
+
+// ============================================================
+// GST invoicing
+// ============================================================
+
+model Invoice {
+  id             String   @id @default(uuid())
+  invoiceNumber  String   @unique
+  orderId        String   @unique
+  order          Order    @relation(fields: [orderId], references: [id])
+  retailerId     String
+  subtotal       Decimal  @db.Decimal(10, 2)
+  discountTotal  Decimal  @default(0) @db.Decimal(10, 2)
+  taxableAmount  Decimal  @db.Decimal(10, 2)
+  cgstAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  sgstAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  igstAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal  @db.Decimal(10, 2)
+  generatedAt    DateTime @default(now())
+}
+
+// ============================================================
+// Returns / Damaged Goods Claims + instant Credit Notes
+// (distinct from expiry claims — this covers wrong item /
+// damaged-in-transit / quality-issue returns on delivered orders)
+// ============================================================
+
+enum ReturnReason {
+  DAMAGED
+  WRONG_ITEM
+  QUALITY_ISSUE
+  EXPIRED_ON_ARRIVAL
+  OTHER
+}
+
+enum ReturnStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model ReturnRequest {
+  id               String        @id @default(uuid())
+  returnNumber     String        @unique
+  retailerId       String
+  retailer         Retailer      @relation(fields: [retailerId], references: [id])
+  orderId          String
+  order            Order         @relation(fields: [orderId], references: [id])
+  orderItemId      String
+  orderItem        OrderItem     @relation(fields: [orderItemId], references: [id])
+  qty              Int
+  reason           ReturnReason
+  note             String?
+  photoUrl         String?
+  status           ReturnStatus  @default(SUBMITTED)
+  rejectionReason  String?
+  decidedByAdminId String?
+  decidedAt        DateTime?
+  creditNote       CreditNote?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([retailerId])
+  @@index([orderId])
+}
+
+model CreditNote {
+  id               String        @id @default(uuid())
+  creditNoteNumber String        @unique
+  retailerId       String
+  retailer         Retailer      @relation(fields: [retailerId], references: [id])
+  returnRequestId  String        @unique
+  returnRequest    ReturnRequest @relation(fields: [returnRequestId], references: [id])
+  amount           Decimal       @db.Decimal(10, 2)
+  reason           String
+  createdAt        DateTime      @default(now())
+
+  @@index([retailerId])
 }

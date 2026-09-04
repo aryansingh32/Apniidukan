@@ -23,4 +23,9 @@ export class AdminPaymentsController {
   reject(@Param('id') id: string, @Body('reason') reason: string, @CurrentAdmin() admin: { sub: string }) {
     return this.service.adminReject(id, admin.sub, reason);
   }
+
+  @Post(':id/mark-cod-collected')
+  markCodCollected(@Param('id') id: string, @CurrentAdmin() admin: { sub: string }) {
+    return this.service.adminMarkCodCollected(id, admin.sub);
+  }
 }

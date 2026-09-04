@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService, ProductWithPricing } from '../pricing/pricing.service';
 import { ProductStatus, Prisma } from '@prisma/client';
+import { buildBarcodeValue } from './barcode.util';
 
 export interface UpsertProductDto {
   name: string;
@@ -133,6 +134,38 @@ export class ProductsService {
 
   async removeSlab(slabId: string) {
     return this.prisma.bulkPriceSlab.delete({ where: { id: slabId } });
+  }
+
+  /** Generates a unique EAN-13-shaped barcode for one product and saves it. */
+  async generateBarcode(id: string) {
+    await this.ensureExists(id);
+    const value = await this.nextUniqueBarcode();
+    return this.prisma.product.update({ where: { id }, data: { barcode: value } });
+  }
+
+  /** Generates barcodes for every product missing one (or a given id list). Returns the updated products. */
+  async generateBarcodesBulk(productIds?: string[]) {
+    const products = await this.prisma.product.findMany({
+      where: productIds && productIds.length > 0 ? { id: { in: productIds } } : { OR: [{ barcode: null }, { barcode: '' }] },
+    });
+
+    const updated = [];
+    for (const product of products) {
+      if (product.barcode && product.barcode.trim() && !productIds) continue;
+      const value = await this.nextUniqueBarcode();
+      updated.push(await this.prisma.product.update({ where: { id: product.id }, data: { barcode: value } }));
+    }
+    return updated;
+  }
+
+  private async nextUniqueBarcode(): Promise<string> {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const sequence = (await this.prisma.product.count()) + attempt + Date.now() % 1000;
+      const value = buildBarcodeValue(sequence);
+      const existing = await this.prisma.product.findFirst({ where: { barcode: value } });
+      if (!existing) return value;
+    }
+    throw new Error('Could not generate a unique barcode, please retry');
   }
 
   private async ensureExists(id: string) {

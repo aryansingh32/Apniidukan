@@ -89,3 +89,21 @@ function safeJsonParse(text: string): unknown {
 export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError;
 }
+
+/** Downloads a PDF (auth-gated) to the cache dir and opens the native share/preview sheet. */
+export async function downloadAndSharePdf(path: string, filename: string): Promise<void> {
+  const { File, Paths } = await import('expo-file-system');
+  const Sharing = await import('expo-sharing');
+
+  const destination = new File(Paths.cache, filename);
+
+  const file = await File.downloadFileAsync(`${API_BASE_URL}${path}`, destination, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+    idempotent: true,
+  });
+
+  const canShare = await Sharing.isAvailableAsync();
+  if (canShare) {
+    await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+  }
+}

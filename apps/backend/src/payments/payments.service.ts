@@ -22,7 +22,12 @@ export class PaymentsService {
 
     const payeeName = this.config.get<string>('UPI_PAYEE_NAME') ?? 'Apniidukan Distributors';
     const amount = Number(order.payment.amount);
-    const upiDeepLink = `upi://pay?pa=${encodeURIComponent(order.payment.upiId)}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(order.orderNumber)}`;
+
+    if (order.payment.method === 'COD') {
+      return { ...order.payment, payeeName, upiDeepLink: null, orderNumber: order.orderNumber };
+    }
+
+    const upiDeepLink = `upi://pay?pa=${encodeURIComponent(order.payment.upiId ?? '')}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(order.orderNumber)}`;
 
     return { ...order.payment, payeeName, upiDeepLink, orderNumber: order.orderNumber };
   }
@@ -96,6 +101,24 @@ export class PaymentsService {
       `Your payment for order ${payment.order.orderNumber} has been verified. Your order is now confirmed.`,
       payment.order.id,
     );
+
+    return updated;
+  }
+
+  async adminMarkCodCollected(paymentId: string, adminId: string) {
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId }, include: { order: true } });
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.method !== 'COD') throw new BadRequestException('This payment is not a Cash on Delivery payment');
+    if (payment.status === 'COD_COLLECTED') return payment;
+
+    const updated = await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { status: PaymentStatus.COD_COLLECTED, verifiedByAdminId: adminId, verifiedAt: new Date() },
+    });
+
+    await this.prisma.auditLog.create({
+      data: { actorType: 'ADMIN', actorId: adminId, action: 'COD_COLLECTED', entityType: 'Payment', entityId: paymentId },
+    });
 
     return updated;
   }

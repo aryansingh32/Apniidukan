@@ -41,4 +41,14 @@ export class AdminProductsController {
   removeSlab(@Param('slabId') slabId: string) {
     return this.service.removeSlab(slabId);
   }
+
+  @Post(':id/generate-barcode')
+  generateBarcode(@Param('id') id: string) {
+    return this.service.generateBarcode(id);
+  }
+
+  @Post('generate-barcodes-bulk')
+  generateBarcodesBulk(@Body('productIds') productIds?: string[]) {
+    return this.service.generateBarcodesBulk(productIds);
+  }
 }

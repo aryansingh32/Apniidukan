@@ -12,9 +12,12 @@ import { ErrorState, LoadingState } from '@/components/States';
 import { useAsync } from '@/hooks/useAsync';
 import { useCart } from '@/context/CartContext';
 import { getOrder } from '@/lib/endpoints';
+import { downloadAndSharePdf, isApiError } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import type { OrderStatus } from '@/lib/types';
 import { colors, fontSize, spacing } from '@/theme';
+
+const INVOICE_INELIGIBLE_STATUSES: OrderStatus[] = ['PAYMENT_PENDING', 'PAYMENT_VERIFICATION', 'CANCELLED'];
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,8 +25,21 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const { reorderFrom } = useCart();
   const [reordering, setReordering] = useState(false);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   const { data: order, loading, error, reload } = useAsync(useCallback(() => getOrder(orderId), [orderId]));
+
+  async function handleDownloadInvoice() {
+    if (!order || downloadingInvoice) return;
+    setDownloadingInvoice(true);
+    try {
+      await downloadAndSharePdf(`/orders/${order.id}/invoice`, `invoice-${order.orderNumber}.pdf`);
+    } catch (e) {
+      Alert.alert('Could not open invoice', isApiError(e) ? e.message : 'Please try again.');
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  }
 
   async function handleReorder() {
     setReordering(true);
@@ -87,6 +103,23 @@ export default function OrderDetailScreen() {
                   {item.freeCaseQty > 0 ? ` + ${item.freeCaseQty} free` : ''}
                 </Text>
                 <Text style={styles.itemRate}>{formatCurrency(item.pricePerCase)}/case</Text>
+                {order.status === 'DELIVERED' ? (
+                  <Text
+                    style={styles.returnLink}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/return-request/[orderItemId]',
+                        params: {
+                          orderItemId: item.id,
+                          productName: item.productNameSnapshot,
+                          maxQty: String(item.caseQty + item.freeCaseQty),
+                        },
+                      })
+                    }
+                  >
+                    Report damaged / return this item
+                  </Text>
+                ) : null}
               </View>
               <Text style={styles.itemTotal}>{formatCurrency(item.lineTotal)}</Text>
             </View>
@@ -154,9 +187,17 @@ export default function OrderDetailScreen() {
         </Card>
 
         <View style={styles.disabledRow}>
-          <Button label="Download Invoice" variant="outline" disabled style={{ marginBottom: spacing.sm }} />
-          <Button label="Report Damaged Goods" variant="outline" disabled />
-          <Text style={styles.comingSoonHint}>Coming soon</Text>
+          {!INVOICE_INELIGIBLE_STATUSES.includes(order.status) ? (
+            <Button
+              label="Download Invoice"
+              variant="outline"
+              onPress={handleDownloadInvoice}
+              loading={downloadingInvoice}
+              style={{ marginBottom: spacing.sm }}
+              icon={<Ionicons name="document-text-outline" size={16} color={colors.primary} />}
+            />
+          ) : null}
+          <Button label="My Returns" variant="outline" onPress={() => router.push('/returns')} icon={<Ionicons name="return-down-back-outline" size={16} color={colors.primary} />} />
         </View>
 
         <Button label="Reorder" onPress={handleReorder} loading={reordering} style={{ marginTop: spacing.lg }} icon={<Ionicons name="repeat" size={16} color={colors.white} />} />
@@ -184,6 +225,7 @@ const styles = StyleSheet.create({
   itemName: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   itemMeta: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   itemRate: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 },
+  returnLink: { fontSize: fontSize.xs, color: colors.primary, fontWeight: '700', marginTop: 6 },
   itemTotal: { fontSize: fontSize.sm, fontWeight: '800', color: colors.text, marginLeft: spacing.md },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryLabel: { fontSize: fontSize.sm, color: colors.textSecondary },
@@ -208,5 +250,4 @@ const styles = StyleSheet.create({
   otpVerifiedCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.successSoft, borderColor: colors.successSoft },
   otpVerifiedText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   disabledRow: { marginTop: spacing.xl, alignItems: 'center' },
-  comingSoonHint: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: spacing.sm },
 });

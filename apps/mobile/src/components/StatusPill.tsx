@@ -36,6 +36,8 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   UNDER_REVIEW: 'Verification Pending',
   PAYMENT_APPROVED: 'Payment Verified',
   PAYMENT_REJECTED: 'Payment Rejected',
+  COD_PENDING: 'Pay on Delivery',
+  COD_COLLECTED: 'Cash Collected',
 };
 
 const PAYMENT_STATUS_TONE: Record<PaymentStatus, 'primary' | 'success' | 'warning' | 'danger' | 'neutral'> = {
@@ -44,6 +46,8 @@ const PAYMENT_STATUS_TONE: Record<PaymentStatus, 'primary' | 'success' | 'warnin
   UNDER_REVIEW: 'warning',
   PAYMENT_APPROVED: 'success',
   PAYMENT_REJECTED: 'danger',
+  COD_PENDING: 'warning',
+  COD_COLLECTED: 'success',
 };
 
 export function PaymentStatusPill({ status }: { status: PaymentStatus }) {

@@ -9,6 +9,8 @@ const NAV = [
   { href: "/orders", label: "Orders", icon: "box" },
   { href: "/retailers", label: "Retailers", icon: "users" },
   { href: "/products", label: "Products", icon: "tag" },
+  { href: "/barcodes", label: "Barcodes", icon: "barcode" },
+  { href: "/returns", label: "Returns", icon: "return" },
   { href: "/expiry", label: "Expiry Center", icon: "hourglass" },
   { href: "/categories", label: "Categories", icon: "folder" },
   { href: "/schemes", label: "Schemes", icon: "gift" },
@@ -28,6 +30,8 @@ function Icon({ name, className }: { name: string; className?: string }) {
     image: "M4 4h16v16H4V4zm4 8l3 3 5-6 4 8H4l4-5z",
     clock: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
     hourglass: "M6 2h12M6 22h12M6 2v6a6 6 0 006 6 6 6 0 006-6V2M6 22v-6a6 6 0 016-6 6 6 0 016 6v6",
+    barcode: "M3 5v14M7 5v14M10 5v14M13 5v14h2V5h-2zM18 5v14M21 5v14",
+    return: "M9 14L4 9l5-5M4 9h11a5 5 0 015 5v1",
   };
   return (
     <svg

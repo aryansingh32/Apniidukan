@@ -31,15 +31,6 @@ export default function CategoriesScreen() {
       <TouchableOpacity style={styles.searchBar} activeOpacity={0.8} onPress={() => router.push('/search')}>
         <Ionicons name="search" size={18} color={colors.textMuted} />
         <Text style={styles.searchPlaceholder}>Search products, brands...</Text>
-        <TouchableOpacity
-          onPress={(e) => {
-            e.stopPropagation();
-            router.push('/scanner');
-          }}
-          hitSlop={8}
-        >
-          <Ionicons name="barcode-outline" size={20} color={colors.primary} />
-        </TouchableOpacity>
       </TouchableOpacity>
 
       {categories.loading ? (

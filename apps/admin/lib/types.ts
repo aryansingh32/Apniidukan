@@ -19,8 +19,13 @@ export type PaymentStatus =
   | "UTR_SUBMITTED"
   | "UNDER_REVIEW"
   | "PAYMENT_APPROVED"
-  | "PAYMENT_REJECTED";
+  | "PAYMENT_REJECTED"
+  | "COD_PENDING"
+  | "COD_COLLECTED";
+export type PaymentMethod = "UPI" | "COD";
 export type SchemeType = "ORDER_VALUE_DISCOUNT" | "BUY_X_GET_Y_FREE";
+export type ReturnReason = "DAMAGED" | "WRONG_ITEM" | "QUALITY_ISSUE" | "EXPIRED_ON_ARRIVAL" | "OTHER";
+export type ReturnStatus = "SUBMITTED" | "APPROVED" | "REJECTED";
 
 export interface Admin {
   id: string;
@@ -145,6 +150,7 @@ export interface OrderItem {
 export interface Payment {
   id: string;
   amount: number;
+  method: PaymentMethod;
   upiId: string | null;
   utr: string | null;
   screenshotUrl: string | null;
@@ -319,4 +325,54 @@ export interface ExpiryClaim {
   createdAt: string;
   items: ExpiryClaimItem[];
   retailer?: Retailer;
+}
+
+// ---- GST invoicing ----
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  orderId: string;
+  retailerId: string;
+  subtotal: number;
+  discountTotal: number;
+  taxableAmount: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  totalAmount: number;
+  generatedAt: string;
+}
+
+// ---- Returns / Damaged Goods Claims + Credit Notes ----
+
+export interface ReturnRequest {
+  id: string;
+  returnNumber: string;
+  retailerId: string;
+  orderId: string;
+  orderItemId: string;
+  qty: number;
+  reason: ReturnReason;
+  note: string | null;
+  photoUrl: string | null;
+  status: ReturnStatus;
+  rejectionReason: string | null;
+  decidedByAdminId: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  orderItem?: OrderItem;
+  order?: Order;
+  retailer?: Retailer;
+  creditNote?: CreditNote | null;
+}
+
+export interface CreditNote {
+  id: string;
+  creditNoteNumber: string;
+  retailerId: string;
+  returnRequestId: string;
+  amount: number;
+  reason: string;
+  createdAt: string;
 }

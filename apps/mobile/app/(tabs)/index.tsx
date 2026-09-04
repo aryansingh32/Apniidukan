@@ -102,16 +102,6 @@ export default function HomeScreen() {
       <TouchableOpacity style={styles.searchBar} activeOpacity={0.8} onPress={() => router.push('/search')}>
         <Ionicons name="search" size={18} color={colors.textMuted} />
         <Text style={styles.searchPlaceholder}>Search products, brands...</Text>
-        <TouchableOpacity
-          onPress={(e) => {
-            e.stopPropagation();
-            router.push('/scanner');
-          }}
-          hitSlop={8}
-          style={styles.scanBtn}
-        >
-          <Ionicons name="barcode-outline" size={20} color={colors.primary} />
-        </TouchableOpacity>
       </TouchableOpacity>
 
       {/* Banners */}
@@ -302,7 +292,6 @@ const styles = StyleSheet.create({
     height: 48,
   },
   searchPlaceholder: { flex: 1, marginLeft: 10, color: colors.textMuted, fontSize: fontSize.md },
-  scanBtn: { padding: 4 },
   bannerWrap: { marginBottom: spacing.xl },
   hScrollWrap: { marginHorizontal: -spacing.lg },
   hScrollContent: { paddingHorizontal: spacing.lg },

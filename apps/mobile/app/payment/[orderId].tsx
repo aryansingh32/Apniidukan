@@ -69,6 +69,7 @@ export default function PaymentScreen() {
   const canSubmitUtr = payment.status === 'UNPAID' || payment.status === 'PAYMENT_REJECTED';
   const isPendingVerification = payment.status === 'UNDER_REVIEW' || payment.status === 'UTR_SUBMITTED';
   const isApproved = payment.status === 'PAYMENT_APPROVED';
+  const isCod = payment.method === 'COD';
 
   return (
     <Screen padded={false}>
@@ -78,7 +79,21 @@ export default function PaymentScreen() {
           <PaymentStatusPill status={payment.status} />
         </View>
 
-        {isApproved ? (
+        {isCod ? (
+          <Card style={payment.status === 'COD_COLLECTED' ? styles.approvedCard : styles.pendingCard}>
+            <Ionicons
+              name={payment.status === 'COD_COLLECTED' ? 'checkmark-circle' : 'cash-outline'}
+              size={40}
+              color={payment.status === 'COD_COLLECTED' ? colors.success : colors.warning}
+            />
+            <Text style={styles.approvedTitle}>{payment.status === 'COD_COLLECTED' ? 'Cash Collected' : 'Cash on Delivery'}</Text>
+            <Text style={styles.approvedBody}>
+              {payment.status === 'COD_COLLECTED'
+                ? `${formatCurrency(payment.amount)} was collected at delivery.`
+                : `Pay ${formatCurrency(payment.amount)} in cash when your order is delivered.`}
+            </Text>
+          </Card>
+        ) : isApproved ? (
           <Card style={styles.approvedCard}>
             <Ionicons name="checkmark-circle" size={40} color={colors.success} />
             <Text style={styles.approvedTitle}>Payment Verified</Text>
@@ -90,7 +105,7 @@ export default function PaymentScreen() {
               <Text style={styles.amount}>{formatCurrency(payment.amount)}</Text>
               <Text style={styles.payTo}>Pay to {payment.payeeName}</Text>
               <View style={styles.qrWrap}>
-                <QRCode value={payment.upiDeepLink} size={190} backgroundColor={colors.white} color={colors.text} />
+                <QRCode value={payment.upiDeepLink ?? ''} size={190} backgroundColor={colors.white} color={colors.text} />
               </View>
               <TouchableOpacity style={styles.upiIdRow} onPress={() => payment.upiId && handleCopy(payment.upiId)} activeOpacity={0.7}>
                 <Text style={styles.upiId}>{payment.upiId}</Text>

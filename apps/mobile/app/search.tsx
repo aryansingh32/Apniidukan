@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 
 import { Screen } from '@/components/Screen';
 import { TopBar } from '@/components/TopBar';
@@ -12,7 +11,6 @@ import { getProducts } from '@/lib/endpoints';
 import { colors, fontSize, radius, spacing } from '@/theme';
 
 export default function SearchScreen() {
-  const router = useRouter();
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
 
@@ -39,9 +37,6 @@ export default function SearchScreen() {
             onChangeText={setQuery}
             autoFocus
           />
-          <TouchableOpacity onPress={() => router.push('/scanner')} hitSlop={8}>
-            <Ionicons name="barcode-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
         </View>
       </View>
 

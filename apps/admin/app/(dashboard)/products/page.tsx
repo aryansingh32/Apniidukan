@@ -7,6 +7,7 @@ import type { Product } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
 import Badge from "@/components/Badge";
 import Button from "@/components/Button";
+import BarcodeScanner from "@/components/BarcodeScanner";
 import { LoadingRow, EmptyRow, ErrorRow } from "@/components/DataStates";
 
 export default function ProductsPage() {
@@ -14,6 +15,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -36,19 +38,26 @@ export default function ProductsPage() {
       p.name.toLowerCase().includes(q) ||
       p.brand.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
+      (p.barcode ?? "").toLowerCase().includes(q) ||
       (p.categoryName ?? "").toLowerCase().includes(q)
     );
   });
 
   return (
     <div className="space-y-4">
+      <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={(v) => setSearch(v)} title="Scan to find product" />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, brand, SKU, category…"
-          className="w-72 rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
+        <div className="flex gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, brand, SKU, barcode…"
+            className="w-72 rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <Button variant="secondary" onClick={() => setScannerOpen(true)}>
+            Scan
+          </Button>
+        </div>
         <Link href="/products/new">
           <Button>+ New Product</Button>
         </Link>

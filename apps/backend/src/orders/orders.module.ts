@@ -10,9 +10,10 @@ import { AdminAuthGuard } from '../common/guards/admin-auth.guard';
 import { PricingModule } from '../pricing/pricing.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ExpiryModule } from '../expiry/expiry.module';
+import { InvoicesModule } from '../invoices/invoices.module';
 
 @Module({
-  imports: [JwtModule.register({}), ConfigModule, PricingModule, NotificationsModule, ExpiryModule],
+  imports: [JwtModule.register({}), ConfigModule, PricingModule, NotificationsModule, ExpiryModule, InvoicesModule],
   controllers: [OrdersController, AdminOrdersController],
   providers: [OrdersService, RetailerAuthGuard, RetailerApprovedGuard, AdminAuthGuard],
   exports: [OrdersService],

@@ -4,6 +4,7 @@ import type {
   Banner,
   Cart,
   Category,
+  CreditNote,
   DeliverySlot,
   ExpiryClaim,
   MyStockBatch,
@@ -13,6 +14,8 @@ import type {
   QuickReorder,
   RequestOtpResponse,
   Retailer,
+  ReturnReason,
+  ReturnRequest,
   Scheme,
   VerifyOtpResponse,
 } from './types';
@@ -68,9 +71,6 @@ export const getProducts = (params?: { categoryId?: string; search?: string; bra
 
 export const getProduct = (id: string) => apiFetch<Product>(`/products/${id}`);
 
-export const getProductByBarcode = (code: string) =>
-  apiFetch<Product[]>(`/products/barcode/${encodeURIComponent(code)}`);
-
 export const getSchemes = () => apiFetch<Scheme[]>('/schemes');
 
 export const getDeliverySlots = () => apiFetch<DeliverySlot[]>('/delivery-slots');
@@ -93,8 +93,12 @@ export const reorder = (orderId: string) =>
   apiFetch<Cart>(`/cart/reorder/${orderId}`, { method: 'POST' });
 
 // ---- Orders ----
-export const createOrder = (deliverySlotId: string, deliveryDate?: string) =>
-  apiFetch<Order>('/orders', { method: 'POST', body: { deliverySlotId, deliveryDate } });
+export const createOrder = (
+  deliverySlotId: string,
+  deliveryDate?: string,
+  paymentMethod: 'UPI' | 'COD' = 'UPI',
+  idempotencyKey?: string,
+) => apiFetch<Order>('/orders', { method: 'POST', body: { deliverySlotId, deliveryDate, paymentMethod, idempotencyKey } });
 
 export const getQuickReorder = () =>
   apiFetch<QuickReorder | null>('/orders/quick-reorder');
@@ -139,3 +143,13 @@ export const submitExpiryClaim = (batchId: string, requestedQty: number, reason:
     method: 'POST',
     body: { items: [{ batchId, requestedQty }], reason, evidenceUrl },
   });
+
+// ---- Returns & Damaged Goods Claims + Credit Notes ----
+export const submitReturn = (orderItemId: string, qty: number, reason: ReturnReason, note?: string, photoUrl?: string) =>
+  apiFetch<ReturnRequest>('/returns', { method: 'POST', body: { orderItemId, qty, reason, note, photoUrl } });
+
+export const getReturns = () => apiFetch<ReturnRequest[]>('/returns');
+
+export const getReturn = (id: string) => apiFetch<ReturnRequest>(`/returns/${id}`);
+
+export const getCreditNotes = () => apiFetch<CreditNote[]>('/credit-notes');

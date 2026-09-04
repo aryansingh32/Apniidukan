@@ -446,13 +446,40 @@ manual admin override the sweep never clears — set/unset it explicitly via
 - `ExpiryClaimRejectionReason`: `WRONG_BATCH | NOT_DELIVERED | QUANTITY_EXCEEDED
   | CLAIM_WINDOW | EVIDENCE | DUPLICATE | POLICY | SUSPICIOUS`
 
-## What's intentionally out of scope in this vertical slice
+## What's now built (previously listed as out of scope)
 
-No returns/credit-notes endpoints, no GST invoice PDF endpoint, no
-offline-sync/idempotency-key endpoints, no barcode-scanner-specific
-endpoint beyond `GET /products/barcode/:code`, no file upload endpoint (image/screenshot
-fields are plain URL strings), no OS-level push notifications (in-app notification
-center only — see Notifications above), no separate driver app (delivery OTP entry
-happens through the admin order-status endpoint). Build the UI to degrade gracefully
-(e.g. hide "Download Invoice" or show "Coming soon") rather than calling endpoints
-that don't exist.
+- **COD payment method**: `POST /orders` accepts `paymentMethod: 'UPI' | 'COD'`
+  (default `UPI`). COD orders skip payment verification and go straight to
+  `CONFIRMED` with a delivery OTP issued immediately; `Payment.status` becomes
+  `COD_PENDING` then `COD_COLLECTED` (auto-set on `DELIVERED`, or manually via
+  `POST /admin/payments/:id/mark-cod-collected`).
+- **GST invoicing**: `GET /orders/:orderId/invoice` (retailer) and
+  `GET /admin/orders/:orderId/invoice` (admin) stream a generated PDF
+  (HSN codes, CGST/SGST split). The `Invoice` record is auto-created the
+  moment an order is marked `DISPATCHED`.
+- **Returns & Damaged Goods + instant credit notes**: `POST/GET /returns`,
+  `GET /returns/:id`, `GET /credit-notes` (retailer); `GET /admin/returns`,
+  `POST /admin/returns/:id/approve` (issues a `CreditNote` instantly),
+  `POST /admin/returns/:id/reject` (admin). Distinct from the expiry-claim
+  system — this covers damaged/wrong-item/quality-issue returns on delivered
+  orders.
+- **Offline order drafts**: `POST /orders` accepts an optional
+  `idempotencyKey`; resubmitting the same key returns the existing order
+  instead of creating a duplicate, so a client can safely retry a checkout
+  saved locally while offline.
+- **Barcode generation**: `POST /admin/products/:id/generate-barcode` and
+  `POST /admin/products/generate-barcodes-bulk` assign unique EAN-13-shaped
+  values server-side; barcode rendering/printing and camera scanning are
+  handled client-side in the admin panel (no dedicated scan endpoint).
+
+## What's still intentionally out of scope
+
+No Udhaar/digital-ledger (running balance, due dates) and no Pay
+Later/credit-terms payment method — deferred to a future round. No file
+upload endpoint (image/screenshot/photo fields are plain URL strings), no
+OS-level push notifications (in-app notification center only — see
+Notifications above), no separate driver app (delivery OTP entry happens
+through the admin order-status endpoint). The retailer-facing
+`GET /products/barcode/:code` lookup endpoint still exists but is unused
+now that the mobile app's barcode scanner has been removed (scanning is
+admin-only).

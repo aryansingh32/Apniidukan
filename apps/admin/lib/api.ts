@@ -92,6 +92,19 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
+/** Fetches a PDF (or other binary) endpoint with auth and opens it in a new tab. */
+export async function openPdf(path: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(res.status, `Could not load document (${res.status})`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 /** Build a query string from an object, skipping empty/undefined values. */
 export function qs(params: Record<string, string | undefined | null>): string {
   const entries = Object.entries(params).filter(

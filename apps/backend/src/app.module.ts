@@ -19,6 +19,8 @@ import { PricingModule } from './pricing/pricing.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ExpiryModule } from './expiry/expiry.module';
+import { InvoicesModule } from './invoices/invoices.module';
+import { ReturnsModule } from './returns/returns.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { ExpiryModule } from './expiry/expiry.module';
     CartModule,
     OrdersModule,
     PaymentsModule,
+    InvoicesModule,
+    ReturnsModule,
     DashboardModule,
   ],
   controllers: [AppController],

@@ -24,6 +24,8 @@ const styles: Record<string, string> = {
   UNDER_REVIEW: "bg-amber-50 text-amber-700 ring-amber-600/20",
   PAYMENT_APPROVED: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
   PAYMENT_REJECTED: "bg-red-50 text-red-700 ring-red-600/20",
+  COD_PENDING: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  COD_COLLECTED: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
   // batch status
   NEAR_EXPIRY: "bg-amber-50 text-amber-700 ring-amber-600/20",
   EXPIRED: "bg-red-50 text-red-700 ring-red-600/20",

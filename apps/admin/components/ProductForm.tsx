@@ -4,6 +4,16 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import type { Category, Product, ProductStatus } from "@/lib/types";
 import Button from "./Button";
+import Barcode from "./Barcode";
+import BarcodeScanner from "./BarcodeScanner";
+
+function clientSideBarcode(): string {
+  const body = `20${Date.now().toString().slice(-10).padStart(10, "0")}`;
+  const digits = body.split("").map(Number);
+  const sum = digits.reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 1 : 3), 0);
+  const check = (10 - (sum % 10)) % 10;
+  return `${body}${check}`;
+}
 
 export interface ProductFormValues {
   name: string;
@@ -54,6 +64,8 @@ export default function ProductForm({
   const [form, setForm] = useState<ProductFormValues>(toFormValues(product));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generatingBarcode, setGeneratingBarcode] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     api
@@ -120,8 +132,46 @@ export default function ProductForm({
     }
   };
 
+  async function handleGenerateBarcode() {
+    setGeneratingBarcode(true);
+    try {
+      if (product) {
+        const updated = await api.post<Product>(`/admin/products/${product.id}/generate-barcode`);
+        set("barcode", updated.barcode);
+      } else {
+        set("barcode", clientSideBarcode());
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not generate a barcode.");
+    } finally {
+      setGeneratingBarcode(false);
+    }
+  }
+
+  function handlePrintBarcode() {
+    const win = window.open("", "_blank", "width=420,height=260");
+    if (!win) return;
+    win.document.write(`
+      <html>
+        <head><title>Barcode — ${form.name || form.sku}</title>
+        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+        </head>
+        <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;margin:0;padding:24px;">
+          <svg id="bc"></svg>
+          <p style="font-size:12px;color:#334155;margin-top:4px;">${(form.name || "").replace(/</g, "")}</p>
+          <script>
+            JsBarcode("#bc", ${JSON.stringify(form.barcode)}, { format: "CODE128", height: 60, width: 2, fontSize: 14, displayValue: true });
+            window.onload = () => { window.print(); };
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  }
+
   return (
     <div className="space-y-5">
+      <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={(v) => set("barcode", v)} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Product name" required>
           <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} />
@@ -191,9 +241,25 @@ export default function ProductForm({
             <input className="input" value={form.sku} onChange={(e) => set("sku", e.target.value)} />
           </Field>
           <Field label="Barcode" required>
-            <input className="input" value={form.barcode} onChange={(e) => set("barcode", e.target.value)} />
+            <div className="flex gap-2">
+              <input className="input" value={form.barcode} onChange={(e) => set("barcode", e.target.value)} />
+              <Button variant="secondary" onClick={handleGenerateBarcode} loading={generatingBarcode} type="button">
+                Generate
+              </Button>
+              <Button variant="secondary" onClick={() => setScannerOpen(true)} type="button">
+                Scan
+              </Button>
+            </div>
           </Field>
         </div>
+        {form.barcode.trim() ? (
+          <div className="mt-4 flex items-center gap-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <Barcode value={form.barcode.trim()} />
+            <Button variant="secondary" onClick={handlePrintBarcode} type="button">
+              Print barcode
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

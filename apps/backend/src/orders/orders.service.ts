@@ -2,12 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
-import { OrderStatus, NotificationType, LedgerEntryType } from '@prisma/client';
+import { OrderStatus, NotificationType, LedgerEntryType, PaymentMethod, PaymentStatus } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FefoAllocationService } from '../expiry/fefo-allocation.service';
 import { InventoryLedgerService } from '../expiry/inventory-ledger.service';
 import { ExpiryPolicyService } from '../expiry/expiry-policy.service';
 import { ProductBatchesService } from '../expiry/product-batches.service';
+import { InvoicesService } from '../invoices/invoices.service';
 
 const STATUS_NOTIFICATIONS: Partial<Record<OrderStatus, { type: NotificationType; title: string; body: (orderNumber: string) => string }>> = {
   [OrderStatus.DISPATCHED]: {
@@ -36,6 +37,10 @@ const CART_ITEM_PRODUCT_INCLUDE = {
   product: { include: { bulkPriceSlabs: true, schemes: { where: { active: true, type: 'BUY_X_GET_Y_FREE' as const } } } },
 };
 
+function generateDeliveryOtp(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
 const ACTIVE_STATUSES: OrderStatus[] = [
   OrderStatus.PAYMENT_PENDING,
   OrderStatus.PAYMENT_VERIFICATION,
@@ -57,6 +62,7 @@ export class OrdersService {
     private ledger: InventoryLedgerService,
     private expiryPolicy: ExpiryPolicyService,
     private productBatches: ProductBatchesService,
+    private invoices: InvoicesService,
   ) {}
 
   private async generateOrderNumber(): Promise<string> {
@@ -64,7 +70,21 @@ export class OrdersService {
     return `B2B${(10001 + count).toString()}`;
   }
 
-  async checkout(retailerId: string, deliverySlotId: string, deliveryDate?: string) {
+  async checkout(
+    retailerId: string,
+    deliverySlotId: string,
+    deliveryDate?: string,
+    paymentMethod: PaymentMethod = PaymentMethod.UPI,
+    idempotencyKey?: string,
+  ) {
+    if (idempotencyKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey },
+        include: { items: true, payment: true, deliverySlot: true },
+      });
+      if (existing && existing.retailerId === retailerId) return existing;
+    }
+
     const slot = await this.prisma.deliverySlot.findUnique({ where: { id: deliverySlotId } });
     if (!slot || !slot.active) throw new BadRequestException('Selected delivery slot is not available');
 
@@ -93,6 +113,8 @@ export class OrdersService {
     const upiId = this.config.get<string>('UPI_ID') ?? 'apniidukan@upi';
     const policy = await this.expiryPolicy.get();
 
+    const isCod = paymentMethod === PaymentMethod.COD;
+
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
@@ -109,7 +131,11 @@ export class OrdersService {
           } as any,
           deliverySlotId,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : this.defaultDeliveryDate(),
-          status: OrderStatus.PAYMENT_PENDING,
+          idempotencyKey: idempotencyKey ?? undefined,
+          // COD orders skip the UPI verification step entirely — nothing to verify
+          // upfront, so they go straight to CONFIRMED with a delivery OTP already issued.
+          status: isCod ? OrderStatus.CONFIRMED : OrderStatus.PAYMENT_PENDING,
+          deliveryOtp: isCod ? generateDeliveryOtp() : undefined,
           items: {
             create: computation.lines.map((line) => ({
               productId: line.productId,
@@ -127,13 +153,15 @@ export class OrdersService {
               lineTotal: line.lineTotal,
             })),
           },
-          statusHistory: { create: { status: OrderStatus.PAYMENT_PENDING, note: 'Order placed, awaiting payment' } },
+          statusHistory: {
+            create: isCod
+              ? { status: OrderStatus.CONFIRMED, note: 'Order placed with Cash on Delivery. Confirmed.' }
+              : { status: OrderStatus.PAYMENT_PENDING, note: 'Order placed, awaiting payment' },
+          },
           payment: {
-            create: {
-              amount: computation.totalAmount,
-              upiId,
-              status: 'UNPAID',
-            },
+            create: isCod
+              ? { amount: computation.totalAmount, method: PaymentMethod.COD, status: PaymentStatus.COD_PENDING }
+              : { amount: computation.totalAmount, method: PaymentMethod.UPI, upiId, status: PaymentStatus.UNPAID },
           },
         },
         include: { items: true, payment: true, deliverySlot: true },
@@ -257,7 +285,7 @@ export class OrdersService {
   async adminUpdateStatus(id: string, status: OrderStatus, note?: string, otp?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { items: { include: { batchAllocations: true } } },
+      include: { items: { include: { batchAllocations: true } }, payment: true },
     });
     if (!order) throw new NotFoundException('Order not found');
 
@@ -271,16 +299,16 @@ export class OrdersService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.order.update({
-        where: { id },
-        data,
-        include: { items: true, payment: true, statusHistory: { orderBy: { createdAt: 'asc' } } },
-      });
-
       // This is the "delivery confirmation" event from EXPIRY_SYSTEM_DESIGN.md —
       // riding the same OTP gate that already proves timestamp + receiver +
       // explicit confirmation, rather than a separate delivery-confirmation step.
       if (status === OrderStatus.DELIVERED) {
+        if (order.payment && order.payment.method === PaymentMethod.COD && order.payment.status !== PaymentStatus.COD_COLLECTED) {
+          await tx.payment.update({
+            where: { id: order.payment.id },
+            data: { status: PaymentStatus.COD_COLLECTED, verifiedAt: new Date() },
+          });
+        }
         for (const item of order.items) {
           for (const allocation of item.batchAllocations) {
             await this.ledger.recordMovement(tx, {
@@ -296,12 +324,22 @@ export class OrdersService {
         }
       }
 
-      return result;
+      return tx.order.update({
+        where: { id },
+        data,
+        include: { items: true, payment: true, statusHistory: { orderBy: { createdAt: 'asc' } } },
+      });
     });
 
     const notif = STATUS_NOTIFICATIONS[status];
     if (notif) {
       await this.notifications.create(order.retailerId, notif.type, notif.title, notif.body(order.orderNumber), order.id);
+    }
+
+    // GST invoice is auto-generated the moment the order is dispatched, per the
+    // client's "Automatic B2B GST Invoicing" requirement.
+    if (status === OrderStatus.DISPATCHED) {
+      await this.invoices.ensureForOrder(order.id).catch(() => undefined);
     }
 
     return updated;

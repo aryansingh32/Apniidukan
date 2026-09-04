@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 
 import { Screen } from '@/components/Screen';
 import { Card } from '@/components/Card';
+import { PendingSyncBanner } from '@/components/PendingSyncBanner';
 import { OrderStatusPill, PaymentStatusPill } from '@/components/StatusPill';
 import { EmptyState, ErrorState, LoadingState } from '@/components/States';
 import { useAsync } from '@/hooks/useAsync';
@@ -28,6 +29,8 @@ export default function OrdersScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>My Orders</Text>
       </View>
+
+      <PendingSyncBanner />
 
       <View style={styles.tabRow}>
         {TABS.map((t) => (
